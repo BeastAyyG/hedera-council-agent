@@ -1,5 +1,3 @@
-> **Cleaned sync 2 to BeastAyyG (Nov 6, ~23:00 IST).** `original-console/` (324 files), `design/` and `.hoplite/` were deleted again from the sync, and the `/original-console` route and scripts were removed. The Atlas/report/console pages and `console-original.css` were KEPT this time: PR #2's council voting and standing-instruction features live in those pages and the test suite requires them (nav, PENDING_VOTE). Their design derives from CODE_TANTRAFEST (Oct 25 2026); the owner must still decide whether to keep them or strip them before submitting. The fresh-drawn page versions from commit 688204b remain in history.
-
 # UI handoff
 
 > **The original paper-and-red pages are in use on this branch.** `public/index.html` (Atlas) and

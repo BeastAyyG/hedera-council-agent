@@ -42,7 +42,7 @@
 .flow .node span { display: block; margin-top: 3px; font: 9px/1.4 ui-monospace, Menlo, Consolas, monospace; color: var(--m-muted); letter-spacing: .04em; }
 .flow .node.lit.pass i { border-color: var(--m-green); background: var(--m-green); }
 .flow .node.lit.fail i { border-color: var(--m-red); background: var(--m-red); }
-.flow .node.lit.wait i { border-color: #b7791f; background: #b7791f; }
+.flow .node.lit.wait i { border-color: #9a6b15; background: #9a6b15; }
 .flow .node.lit.fail b { color: var(--m-red); } .flow .node.lit.pass b { color: var(--m-green); }
 .flow .node:not(.lit) b, .flow .node:not(.lit) span { opacity: .45; }
 .flow .node.lit i { animation: m-pop .5s cubic-bezier(.2,1.6,.35,1) both; }

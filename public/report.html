@@ -353,7 +353,7 @@
 
 
   /* ---- verdict-story refinement: one measured, readable sequence ---- */
-  :root{--muted-ink:#686259;--red-ink:#b52d20;--pass-ink:#2f6f38;}
+  :root{--muted-ink:#8b857a;--red-ink:#e23b28;--pass-ink:#3f9b45;}
   :where(a,button,summary,[tabindex]):focus-visible{
     outline:2px solid var(--red-ink);outline-offset:4px;
   }
@@ -531,8 +531,6 @@
       <a href="/council.html">Council</a>
       <a href="/member.html">My seat</a>
       <a href="/report.html" aria-current="page">Report</a>
-      <a href="/policy">Policy</a>
-      <a href="/audit/verify">Audit</a>
       <a href="/verify.html">Verify log</a>
     </div>
     <div>
@@ -646,9 +644,9 @@
     <div class="receipt-body">
       <div class="receipt-facts" id="receiptFacts"><p>Loading the commitment record&hellip;</p></div>
       <nav class="receipt-links" aria-label="Verification links">
-        <a href="/policy">Policy</a>
-        <a href="/audit">Audit log</a>
-        <a href="/audit/verify">Verify log</a>
+        <a href="/policy">Policy (JSON)</a>
+        <a href="/audit">Audit log (JSON)</a>
+        <a href="/audit/verify">Audit check (JSON)</a>
         <a id="receiptEvidence" href="/audit">Evidence JSON</a>
       </nav>
       <p class="receipt-note" id="receiptNote">Source and simulation labels are preserved exactly as reported.</p>

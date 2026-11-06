@@ -358,3 +358,9 @@
     .rail{left:14px;}
     .footer{grid-template-columns:1fr;}
   }
+
+/* Reduced motion: stop every animation and transition, hide the curtain and badge. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+  .curtain, .badge { display: none; }
+}

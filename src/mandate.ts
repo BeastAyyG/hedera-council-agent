@@ -61,8 +61,11 @@ export interface MandateDraft {
 // One open or closed council vote, as listed by GET /council/votes.
 export interface VoteItem {
   subject: string;
-  kind: "proposal" | "mandate";
+  kind: "proposal" | "mandate" | "revocation";
   title: string;
+  // Revocation votes: the seat to remove and the seat that proposed it.
+  target?: string;
+  openedBy?: string;
   amountTinybars?: number;
   payee?: string;
   violations?: string[];
@@ -256,7 +259,9 @@ export function evaluateMandate(
   if (rules.monthlyCapTinybars !== null && ctx.spentThisMonthTinybars + amount > rules.monthlyCapTinybars) {
     violations.push(`would bring this month to ${(ctx.spentThisMonthTinybars + amount) / TINYBARS_PER_HBAR} of ${hbar(rules.monthlyCapTinybars)}`);
   }
-  if (rules.payees === "registered" && ctx.payeeStatus !== "registered") violations.push(`${payee} is not a registered payee`);
+  // A recipient missing from the registry is a new recipient: the council decides, whatever rules.payees says.
+  if (ctx.payeeStatus === "unregistered") violations.push(`${payee} is not a registered payee — new recipient`);
+  else if (rules.payees === "registered" && ctx.payeeStatus !== "registered") violations.push(`${payee} is not a registered payee`);
   if (Array.isArray(rules.payees) && !rules.payees.some((p) => sameAccount(p, payee))) {
     violations.push(`${payee} is not one of the allowed payees: ${rules.payees.join(", ")}`);
   }

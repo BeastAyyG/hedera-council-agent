@@ -102,6 +102,7 @@ Each integration turns on with its own env vars and is labelled in `/health` and
 ```bash
 npm install
 cp .env.example .env   # fill in the values below, never commit .env
+npm run css:console    # only after editing public/console.html
 npm test               # build + unit and HTTP tests
 npm run preflight      # check Hedera, x402, 0G, World ID; add -- --setup, --create-fee-account, --create-council for one-time Hedera setup
 npm run demo           # demo rehearsal, 12 scenes
@@ -119,7 +120,6 @@ npm start              # HTTP server on :3000 (PORT to change); UI at /
 | `npm run propose -- 0.0.<payee> <hbar> "<purpose>"` | A council member schedules a transfer (real mode) |
 | `npm run verify -- <proposalId> [--server URL]` | Replayable audit of one decision |
 | `npm run ready` | Submission readiness: PASS / TODO / FAIL |
-| `npm run console:install`, `npm run console` | The separate original console app (see `docs/submission.md`) |
 
 ### Try the whole flow in the browser (simulated)
 

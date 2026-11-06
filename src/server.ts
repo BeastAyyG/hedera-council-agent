@@ -14,7 +14,10 @@
 //   POST /proposals/:id/execute -> after the challenge window: re-check, then sign or abort
 //   POST /proposals/:id/challenge -> pause ({reason}) or resume ({resume:true}) execution
 //   POST /payees/:account/revoke -> revoke a payee registry entry at runtime
-//   POST /council/revoke        -> a seat holder revokes a seat: epoch +1, pending proposals cancelled
+//   POST /council/revoke        -> leave the council (own seat, immediate: epoch +1, pending proposals
+//     cancelled), or propose removing another seat (202: opens revocation vote R-n)
+//   POST /council/revocations/:id/vote -> ballot on a revocation vote; a majority of the other seats removes it
+//   POST /council/invites       -> a seat holder issues a single-use, 24 hour invite to join
 //   GET  /council/epoch         -> {epoch, revokedSeats}
 //   State-changing routes above need COUNCIL_API_KEY when it is set (src/auth.ts).
 //   GET  /proposals             -> list of registered proposals
@@ -26,7 +29,8 @@
 //   POST /world/rp-context      -> RP-signed IDKit request for one server-chosen action
 //   POST /world/verify          -> verify the owner's World ID for one proposal,
 //     store the approval server-side (5 min, single use)
-//   POST /council/join          -> Proof of Human council join, one seat per nullifier
+//   POST /council/join          -> Proof of Human council join, one seat per nullifier. The first
+//     seat founds the council; every later seat needs an invite ({invite}).
 //   GET  /council/seats         -> current seats
 //   Standing instructions and council votes (docs/mandate-spec.md):
 //   GET  /mandate, POST /mandate/draft, POST /mandate/:id/vote, POST /proposals/:id/vote,
@@ -60,7 +64,7 @@ import { SimulatedCheckPayer, X402CheckPayer, type CheckPayer } from "./payment.
 import { isLargeProposal, proposalFingerprint, validateProposal, type Proposal } from "./proposal.js";
 import { DEMO_PAYEES, loadPayeeRegistry } from "./payee.js";
 import { buildPolicy } from "./policy.js";
-import { StateStore } from "./store.js";
+import { StateStore, type RevocationVote } from "./store.js";
 import {
   ApprovalStore,
   councilSignAction,
@@ -69,6 +73,7 @@ import {
   loadWorldConfig,
   proposalSignal,
   JOIN_SIGNAL,
+  inviteSignal,
   revokeSignal,
   mockedAllowed,
   mockedWorldCheck,
@@ -201,8 +206,6 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
   const proposals = new Map<string, RegisteredProposal>();
   const worldOn = isWorldConfigured(agent.world);
   const allowMocked = mockedAllowed(agent.world, agent.hedera.config.network);
-  // Proposal state is in memory: a vote left open by a previous process cannot be resolved.
-  for (const v of store.votes()) if (v.decision === "PENDING_VOTE") store.putVote({ ...v, decision: "CANCELLED" });
 
   const mandateCtx = (): MandateContext | null => {
     const m = store.activeMandate();
@@ -230,11 +233,26 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
     decision: m.status,
     openedAt: m.createdAt,
   });
+  const revocationItem = (r: RevocationVote): VoteItem => ({
+    subject: r.subject,
+    kind: "revocation",
+    title: `Remove ${r.target}`,
+    target: r.target,
+    openedBy: r.openedBy,
+    summary: [`Proposed by ${r.openedBy}. Only the other seats vote; a majority of them removes ${r.target}.`, ...(r.closedReason ? [r.closedReason] : [])],
+    vote: r.vote,
+    decision: r.status,
+    openedAt: r.openedAt,
+  });
   const allVotes = () => {
-    const items = [...store.votes(), ...store.mandates().map(mandateItem)].sort((a, b) => b.openedAt.localeCompare(a.openedAt));
-    const isOpen = (i: VoteItem) => (i.kind === "mandate" ? i.decision === "open" : proposalVoteOpen(i));
+    const items = [...store.votes(), ...store.mandates().map(mandateItem), ...store.revocations().map(revocationItem)].sort((a, b) => b.openedAt.localeCompare(a.openedAt));
+    const isOpen = (i: VoteItem) => (i.kind === "proposal" ? proposalVoteOpen(i) : i.decision === "open");
     return { items, isOpen };
   };
+  // A ballot on a revocation is bound to the seat it removes and the epoch it opened in.
+  const revocationFingerprint = (r: RevocationVote) => `revoke:${r.target}:${r.epoch}`;
+  // Public id for an invite: the code itself is a bearer secret and never logged.
+  const inviteId = (code: string) => sha256(code).slice(0, 10);
   const app = express();
   app.use(express.json({ limit: "64kb" }));
 
@@ -475,6 +493,13 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
     }
   };
 
+  // Proposal state is in memory: a vote left open by a previous process cannot be resolved.
+  for (const v of store.votes()) {
+    if (v.decision !== "PENDING_VOTE") continue;
+    store.putVote({ ...v, decision: "CANCELLED" });
+    await auditNote(v.subject, "VOTE_CANCELLED_RESTART", `Council vote on ${v.subject} closed: the agent restarted and pending proposals are held in memory, so it cannot be resolved. Submit the payment again under a new id.`);
+  }
+
   // Execute after the challenge window: re-check everything, then sign or abort.
   app.post("/proposals/:id/execute", auth.require, async (req, res) => {
     const entry = proposals.get(String(req.params.id));
@@ -578,7 +603,76 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
     res.json({ epoch: store.epoch(), revokedSeats: store.revokedSeatCount() });
   });
 
-  // Seat revocation: only a current seat holder, proven human, may revoke.
+  // Applies a seat revocation: epoch +1, the person blocked from rejoining, pending
+  // proposals and open votes cancelled, schedules deleted. Used for leaving the
+  // council (immediate) and for a revocation vote that passed.
+  const applyRevocation = async (targetSeat: string, by: { subject: string; vote: VoteItem["vote"] } | null) => {
+    const revoked = store.revokeSeat(targetSeat)!;
+    // An execution already past its epoch re-check may be signing right now. Let it record its
+    // real outcome first; cancelling under it would leave CANCELLED on a transfer that went out.
+    // Executions that start after the epoch bump abort on the re-check, so busy entries are skipped.
+    const inFlight = [...proposals.values()].filter((e) => e.inflight);
+    await Promise.all(inFlight.map((e) => e.inflight));
+    const cancelled = [...proposals.values()].filter((e) => (e.pending || e.lastOutcome?.decision === "PENDING_VOTE") && e.lastOutcome && !e.busy);
+    for (const e of cancelled) {
+      e.pending = null;
+      approvals.delete(e.proposal.id);
+      e.lastOutcome = { ...e.lastOutcome!, decision: "CANCELLED", reason: `Cancelled: seat ${revoked.seat.seat} was revoked (epoch ${revoked.fromEpoch} -> ${revoked.toEpoch}).`, challengeUntil: null };
+      const v = store.vote(e.proposal.id);
+      if (v) store.putVote({ ...v, decision: "CANCELLED" });
+    }
+    // Open adoption votes were taken over a council that no longer exists.
+    const closedMandates = store.mandates().filter((m) => m.status === "open");
+    for (const m of closedMandates) {
+      store.updateMandate({ ...m, status: "rejected", closedReason: `Closed: seat ${revoked.seat.seat} was revoked (epoch ${revoked.fromEpoch} -> ${revoked.toEpoch}). Draft it again.` });
+    }
+    // So were other open revocation votes; their ballots are bound to the old epoch.
+    const closedRevocations = store.revocations().filter((r) => r.status === "open" && r.subject !== by?.subject);
+    for (const r of closedRevocations) {
+      store.putRevocation({ ...r, status: "cancelled", closedAt: clock().toISOString(), closedReason: `Closed: seat ${revoked.seat.seat} was revoked (epoch ${revoked.fromEpoch} -> ${revoked.toEpoch}). Propose it again.` });
+    }
+    const scheduleErrors: string[] = [];
+    if (agent.chain?.cancel) {
+      for (const e of cancelled) {
+        const id = e.lastOutcome!.scheduledTxId ?? e.proposal.scheduleId;
+        if (!id) continue;
+        try {
+          await agent.chain.cancel(id);
+        } catch (err) {
+          scheduleErrors.push(`${id}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    }
+    const detail =
+      `epoch ${revoked.fromEpoch} -> ${revoked.toEpoch}, seat ${revoked.seat.seat} revoked, ${cancelled.length} pending proposals cancelled` +
+      (closedMandates.length ? `, ${closedMandates.length} open instruction votes closed` : "") +
+      (closedRevocations.length ? `, ${closedRevocations.length} open removal votes closed` : "") +
+      (scheduleErrors.length ? `, ${scheduleErrors.length} schedule deletions failed` : "") +
+      (by ? `, removed by council vote ${by.subject} (${by.vote.yes} of ${by.vote.eligible.length})` : ", left the council");
+    const logged = await auditNote("COUNCIL", "REVOKED", detail);
+    for (const e of cancelled) {
+      e.lastOutcome = { ...e.lastOutcome!, cancelledBy: { auditSeq: logged.auditSeq, auditHash: logged.auditHash, epoch: revoked.toEpoch } };
+    }
+    for (const m of closedMandates) {
+      await auditNote(m.id, "MANDATE_REJECTED", `Standing instruction ${m.id} closed without adoption: seat ${revoked.seat.seat} was revoked (epoch ${revoked.fromEpoch} -> ${revoked.toEpoch}).`, undefined, { rulesHash: m.rulesHash });
+    }
+    return {
+      revoked: true,
+      seat: revoked.seat.seat,
+      by: by ? `council vote ${by.subject}` : "self",
+      epoch: revoked.toEpoch,
+      cancelledProposals: cancelled.map((e) => e.proposal.id),
+      closedMandateVotes: closedMandates.map((m) => m.id),
+      closedRevocationVotes: closedRevocations.map((r) => r.subject),
+      settledBeforeRevocation: inFlight.map((e) => ({ id: e.proposal.id, decision: e.lastOutcome?.decision ?? null })),
+      scheduleDeletion: agent.mode === "real" ? (scheduleErrors.length ? { failed: scheduleErrors } : "deleted") : "simulated: recorded only, no Hedera schedule existed",
+      detail,
+      ...logged,
+    };
+  };
+
+  // Leaving the council (own seat) is immediate. Removing another seat opens a
+  // revocation vote among the other seats. Only a current seat holder, proven human, may do either.
   app.post("/council/revoke", auth.require, async (req, res) => {
     const body = (req.body ?? {}) as { seat?: unknown; nullifier?: unknown; idkitResult?: Record<string, unknown>; mocked?: unknown; byNullifier?: unknown };
     let holder: string | null = null;
@@ -618,57 +712,28 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
       res.status(404).json({ error: "No such seat. Give a seat id (seat) or its nullifier." });
       return;
     }
-    const revoked = store.revokeSeat(target.seat)!;
-    // An execution already past its epoch re-check may be signing right now. Let it record its
-    // real outcome first; cancelling under it would leave CANCELLED on a transfer that went out.
-    // Executions that start after the epoch bump abort on the re-check, so busy entries are skipped.
-    const inFlight = [...proposals.values()].filter((e) => e.inflight);
-    await Promise.all(inFlight.map((e) => e.inflight));
-    const cancelled = [...proposals.values()].filter((e) => (e.pending || e.lastOutcome?.decision === "PENDING_VOTE") && e.lastOutcome && !e.busy);
-    for (const e of cancelled) {
-      e.pending = null;
-      approvals.delete(e.proposal.id);
-      e.lastOutcome = { ...e.lastOutcome!, decision: "CANCELLED", reason: `Cancelled: seat ${revoked.seat.seat} was revoked (epoch ${revoked.fromEpoch} -> ${revoked.toEpoch}).`, challengeUntil: null };
-      const v = store.vote(e.proposal.id);
-      if (v) store.putVote({ ...v, decision: "CANCELLED" });
+    const holderSeat = store.seats().find((s) => s.nullifier === holder)!;
+    if (holder === target.nullifier) {
+      res.json(await applyRevocation(target.seat, null));
+      return;
     }
-    // Open adoption votes were taken over a council that no longer exists.
-    const closedMandates = store.mandates().filter((m) => m.status === "open");
-    for (const m of closedMandates) {
-      store.updateMandate({ ...m, status: "rejected", closedReason: `Closed: seat ${revoked.seat.seat} was revoked (epoch ${revoked.fromEpoch} -> ${revoked.toEpoch}). Draft it again.` });
+    const already = store.revocations().find((r) => r.status === "open" && r.target === target.seat);
+    if (already) {
+      res.status(409).json({ voteOpened: false, error: `A vote on removing ${target.seat} is already open (${already.subject}).`, subject: already.subject, vote: already.vote });
+      return;
     }
-    const scheduleErrors: string[] = [];
-    if (agent.chain?.cancel) {
-      for (const e of cancelled) {
-        const id = e.lastOutcome!.scheduledTxId ?? e.proposal.scheduleId;
-        if (!id) continue;
-        try {
-          await agent.chain.cancel(id);
-        } catch (err) {
-          scheduleErrors.push(`${id}: ${err instanceof Error ? err.message : String(err)}`);
-        }
-      }
+    const eligible = store.seats().map((s) => s.seat).filter((s) => s !== target.seat);
+    if (eligible.length === 0) {
+      res.status(409).json({ voteOpened: false, error: `No other seat could vote on removing ${target.seat}.` });
+      return;
     }
-    const detail =
-      `epoch ${revoked.fromEpoch} -> ${revoked.toEpoch}, seat ${revoked.seat.seat} revoked, ${cancelled.length} pending proposals cancelled` +
-      (closedMandates.length ? `, ${closedMandates.length} open instruction votes closed` : "") +
-      (scheduleErrors.length ? `, ${scheduleErrors.length} schedule deletions failed` : "");
-    const logged = await auditNote("COUNCIL", "REVOKED", detail);
-    for (const e of cancelled) {
-      e.lastOutcome = { ...e.lastOutcome!, cancelledBy: { auditSeq: logged.auditSeq, auditHash: logged.auditHash, epoch: revoked.toEpoch } };
-    }
-    res.json({
-      revoked: true,
-      seat: revoked.seat.seat,
-      by: holder === target.nullifier ? "self" : "another seat holder",
-      epoch: revoked.toEpoch,
-      cancelledProposals: cancelled.map((e) => e.proposal.id),
-      closedMandateVotes: closedMandates.map((m) => m.id),
-      settledBeforeRevocation: inFlight.map((e) => ({ id: e.proposal.id, decision: e.lastOutcome?.decision ?? null })),
-      scheduleDeletion: agent.mode === "real" ? (scheduleErrors.length ? { failed: scheduleErrors } : "deleted") : "simulated: recorded only, no Hedera schedule existed",
-      detail,
-      ...logged,
-    });
+    const r = store.openRevocation({ target: target.seat, openedBy: holderSeat.seat, epoch: store.epoch(), vote: openTally(eligible), status: "open", openedAt: clock().toISOString() });
+    const logged = await auditNote(
+      r.subject,
+      "REVOCATION_VOTE_OPENED",
+      `${holderSeat.seat} proposed removing ${target.seat}. Council vote ${r.subject} opened: ${r.vote.needed} of the ${eligible.length} other seats needed.`,
+    );
+    res.status(202).json({ voteOpened: true, subject: r.subject, kind: "revocation", target: target.seat, by: holderSeat.seat, vote: r.vote, ...logged });
   });
 
   const payeeSummary = () => {
@@ -779,16 +844,23 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
     const id = typeof subject === "string" ? subject : "";
     const m = store.mandate(id);
     const p = proposals.get(id);
+    const r = store.revocation(id);
     if (kind === "mandate") return m ? { fingerprint: m.rulesHash } : { error: "Unknown standing instruction.", status: 404 };
     if (kind === "proposal") return p ? { fingerprint: p.fingerprint } : { error: "Unknown proposal.", status: 404 };
-    if (m && p) return { error: `Both a proposal and a standing instruction are called ${id}: give kind "proposal" or "mandate".`, status: 400 };
+    if (kind === "revocation") return r ? { fingerprint: revocationFingerprint(r) } : { error: "Unknown revocation vote.", status: 404 };
+    if ([m, p, r].filter(Boolean).length > 1) return { error: `More than one vote subject is called ${id}: give kind "proposal", "mandate" or "revocation".`, status: 400 };
     if (m) return { fingerprint: m.rulesHash };
     if (p) return { fingerprint: p.fingerprint };
-    return { error: "Unknown vote subject. Give a proposal id or a standing instruction id (subject).", status: 404 };
+    if (r) return { fingerprint: revocationFingerprint(r) };
+    return { error: "Unknown vote subject. Give a proposal id, a standing instruction id or a revocation vote id (subject).", status: 404 };
   };
 
-  const actionFor = (body: { proposalId?: unknown; join?: unknown; revoke?: unknown; seat?: unknown; vote?: unknown; subject?: unknown; choice?: unknown; kind?: unknown }): { action: string; signal?: string } | { error: string; status: number } => {
+  const actionFor = (body: { proposalId?: unknown; join?: unknown; revoke?: unknown; invite?: unknown; seat?: unknown; vote?: unknown; subject?: unknown; choice?: unknown; kind?: unknown }): { action: string; signal?: string } | { error: string; status: number } => {
     if (body.join === true) return { action: JOIN_ACTION, signal: JOIN_SIGNAL };
+    if (body.invite === true) {
+      const seat = store.seats().find((s) => s.seat === body.seat);
+      return seat ? { action: JOIN_ACTION, signal: inviteSignal(seat.seat) } : { error: "No such seat. Give the inviting seat id (seat).", status: 404 };
+    }
     if (body.vote === true) {
       if (body.choice !== "yes" && body.choice !== "no") return { error: 'choice must be "yes" or "no".', status: 400 };
       const f = voteFingerprint(body.subject, body.kind);
@@ -815,6 +887,7 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
       proposalId: req.body?.proposalId,
       join: req.body?.join,
       revoke: req.body?.revoke,
+      invite: req.body?.invite,
       seat: req.body?.seat,
       vote: req.body?.vote,
       subject: req.body?.subject,
@@ -864,8 +937,16 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
     res.json({ approved: true, source: "world", expiresAt: check.expiresAt, detail: verified.detail });
   });
 
+  // The first seat founds the council; every later seat consumes a single-use invite.
   app.post("/council/join", async (req, res) => {
-    const body = (req.body ?? {}) as { idkitResult?: Record<string, unknown>; mocked?: unknown; nullifier?: unknown };
+    const body = (req.body ?? {}) as { idkitResult?: Record<string, unknown>; mocked?: unknown; nullifier?: unknown; invite?: unknown };
+    if (body.invite !== undefined && (typeof body.invite !== "string" || body.invite.length === 0 || body.invite.length > 64)) {
+      res.status(400).json({ joined: false, error: "invite must be the invite code (1-64 chars)." });
+      return;
+    }
+    const invite = typeof body.invite === "string" ? body.invite : null;
+    let nullifier: string;
+    let source: "world" | "mocked";
     if (body.mocked === true) {
       if (!allowMocked) {
         res.status(403).json({ error: "Mocked joins are disabled: World ID is configured (or this is mainnet)." });
@@ -875,44 +956,104 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
         res.status(400).json({ error: "nullifier (1-80 chars) is required for a mocked join." });
         return;
       }
-      if (store.isRevoked(`mock:${body.nullifier}`)) {
-        res.status(403).json({ joined: false, error: "This seat was revoked" });
+      nullifier = `mock:${body.nullifier}`;
+      source = "mocked";
+    } else {
+      if (!worldOn || !body.idkitResult || typeof body.idkitResult !== "object") {
+        res.status(400).json({ error: "World ID is not configured, or no idkitResult was supplied." });
         return;
       }
-      const seat = store.addSeat(`mock:${body.nullifier}`, "mocked");
-      if (!seat) {
-        res.status(409).json({ joined: false, error: "This person already holds a council seat." });
+      const verified = await verifyWorldProof(agent.world, body.idkitResult, JOIN_ACTION, options.worldFetch, JOIN_SIGNAL);
+      if (!verified.ok || !verified.nullifier) {
+        res.status(403).json({ joined: false, error: verified.detail });
         return;
       }
+      nullifier = verified.nullifier;
+      source = "world";
+    }
+    const joined = store.joinCouncil(nullifier, source, invite, clock());
+    if (!joined.ok) {
+      res.status(joined.status).json({ joined: false, error: joined.error });
+      return;
+    }
+    const { seat, invite: used } = joined;
+    const logged = await auditNote(
+      "COUNCIL",
+      "SEAT_JOINED",
+      used
+        ? `${seat.seat} joined (${source === "world" ? "World ID Proof of Human" : "MOCKED proof, demo only"}) with invite ${inviteId(used.code)} from ${used.by}.`
+        : `${seat.seat} founded the council (${source === "world" ? "World ID Proof of Human" : "MOCKED proof, demo only"}).`,
+    );
+    res.json({
+      joined: true,
+      seat: seat.seat,
+      founder: !used,
+      invitedBy: used?.by ?? null,
       // The stored nullifier lets the browser remember "who am I" in demo mode.
-      res.json({ joined: true, seat: seat.seat, nullifier: seat.nullifier, proof: "MOCKED Proof of Human (demo only)" });
-      return;
+      ...(source === "mocked" ? { nullifier: seat.nullifier, proof: "MOCKED Proof of Human (demo only)" } : { proof: "World ID Proof of Human, backend-verified" }),
+      auditSeq: logged.auditSeq,
+    });
+  });
+
+  // A current seat holder issues a single-use invite (24 hours). Demo: the holder's
+  // mocked nullifier. Real: a World ID proof under the join action, signal "council-invite:<seat>".
+  app.post("/council/invites", auth.require, async (req, res) => {
+    const body = (req.body ?? {}) as { mocked?: unknown; byNullifier?: unknown; idkitResult?: Record<string, unknown>; seat?: unknown };
+    let by: string;
+    if (body.mocked === true) {
+      if (!allowMocked) {
+        res.status(403).json({ error: "Mocked invites are disabled: World ID is configured (or this is mainnet)." });
+        return;
+      }
+      const seat = typeof body.byNullifier === "string" ? store.seats().find((s) => s.source === "mocked" && s.nullifier === body.byNullifier) : undefined;
+      if (!seat) {
+        res.status(403).json({ error: "Only a current seat holder may invite." });
+        return;
+      }
+      by = seat.seat;
+    } else {
+      if (!worldOn || !body.idkitResult || typeof body.idkitResult !== "object") {
+        res.status(400).json({ error: "World ID is not configured, or no idkitResult was supplied." });
+        return;
+      }
+      const named = store.seats().find((s) => s.seat === body.seat);
+      if (!named) {
+        res.status(404).json({ error: "No such seat. Give the inviting seat id (seat)." });
+        return;
+      }
+      let verified;
+      try {
+        verified = await verifyWorldProof(agent.world, body.idkitResult, JOIN_ACTION, options.worldFetch, inviteSignal(named.seat));
+      } catch (err) {
+        res.status(502).json({ error: `World ID verification is unavailable: ${err instanceof Error ? err.message : String(err)}` });
+        return;
+      }
+      if (!verified.ok || !verified.nullifier) {
+        res.status(403).json({ error: verified.detail });
+        return;
+      }
+      if (!store.seats().some((s) => s.seat === named.seat && s.source === "world" && s.nullifier === verified.nullifier)) {
+        res.status(403).json({ error: `Only the holder of ${named.seat} may invite as it.` });
+        return;
+      }
+      // One invite per proof: each RP request carries a fresh server-signed nonce.
+      const nonce = body.idkitResult.nonce;
+      if (typeof nonce !== "string" || !store.consumeApproval(`invite:${nonce}`)) {
+        res.status(409).json({ error: "This World ID proof was already used for an invite. Make a fresh proof." });
+        return;
+      }
+      by = named.seat;
     }
-    if (!worldOn || !body.idkitResult || typeof body.idkitResult !== "object") {
-      res.status(400).json({ error: "World ID is not configured, or no idkitResult was supplied." });
-      return;
-    }
-    const verified = await verifyWorldProof(agent.world, body.idkitResult, JOIN_ACTION, options.worldFetch, JOIN_SIGNAL);
-    if (!verified.ok || !verified.nullifier) {
-      res.status(403).json({ joined: false, error: verified.detail });
-      return;
-    }
-    if (store.isRevoked(verified.nullifier)) {
-      res.status(403).json({ joined: false, error: "This seat was revoked" });
-      return;
-    }
-    const seat = store.addSeat(verified.nullifier, "world");
-    if (!seat) {
-      res.status(409).json({ joined: false, error: "This person already holds a council seat." });
-      return;
-    }
-    res.json({ joined: true, seat: seat.seat, proof: "World ID Proof of Human, backend-verified" });
+    const inv = store.createInvite(by, clock());
+    const logged = await auditNote("COUNCIL", "SEAT_INVITED", `${by} issued invite ${inviteId(inv.code)}, single use, expires ${inv.expiresAt}.`);
+    res.status(201).json({ code: inv.code, id: inviteId(inv.code), expiresAt: inv.expiresAt, by, link: `/council.html?invite=${encodeURIComponent(inv.code)}`, ...logged });
   });
 
   app.get("/council/seats", (_req, res) => {
     res.json({
       count: store.seats().length,
       epoch: store.epoch(),
+      admission: store.seats().length === 0 ? "founder: the first seat joins freely" : "invite: a current seat holder must invite",
       seats: store.seats().map((s) => ({ seat: s.seat, source: s.source, joinedAt: s.joinedAt, nullifier: `${s.nullifier.slice(0, 10)}…` })),
     });
   });
@@ -1106,6 +1247,55 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
     }
   });
 
+  app.post("/council/revocations/:id/vote", auth.require, async (req, res) => {
+    const id = String(req.params.id);
+    const before = store.revocation(id);
+    if (!before) {
+      res.status(404).json({ error: "Unknown revocation vote." });
+      return;
+    }
+    if (before.status !== "open") {
+      res.status(409).json({ error: `The vote on ${id} is closed (${before.status}).` });
+      return;
+    }
+    const who = await authBallot(req.body, id, revocationFingerprint(before));
+    if (!who.ok) {
+      res.status(who.status).json({ recorded: false, error: who.error });
+      return;
+    }
+    // Re-read after the await: another ballot or a revocation may have closed it.
+    const r = store.revocation(id)!;
+    if (r.status !== "open" || r.epoch !== store.epoch()) {
+      res.status(409).json({ recorded: false, error: `The vote on ${id} is closed (${r.status === "open" ? "the council changed" : r.status}).` });
+      return;
+    }
+    if (who.seat === r.target) {
+      res.status(403).json({ recorded: false, error: `${r.target} cannot vote on its own removal.` });
+      return;
+    }
+    const cast = castBallot(r.vote, { seat: who.seat, choice: who.choice, at: clock().toISOString(), source: who.source }, id);
+    if (!cast.ok) {
+      res.status(cast.status).json({ recorded: false, error: cast.error });
+      return;
+    }
+    const vote = cast.tally;
+    // Saved before any await, so a second closing ballot sees a closed vote.
+    const status = vote.status === "passed" ? "removed" : vote.status === "failed" ? "kept" : "open";
+    store.putRevocation({ ...r, vote, status, ...(status === "open" ? {} : { closedAt: clock().toISOString() }) });
+    await auditNote(id, "VOTE", ballotDetail(who.seat, who.choice, id, vote));
+    if (vote.status === "open") {
+      res.json({ recorded: true, vote, removed: false });
+      return;
+    }
+    if (vote.status === "failed") {
+      await auditNote(id, "REVOCATION_REJECTED", `Council vote ${id} on removing ${r.target} failed (${vote.yes} yes, ${vote.no} no of ${vote.eligible.length}). ${r.target} keeps its seat.`);
+      res.json({ recorded: true, vote, removed: false });
+      return;
+    }
+    const revocation = await applyRevocation(r.target, { subject: id, vote });
+    res.json({ recorded: true, vote, removed: true, revocation });
+  });
+
   app.get("/council/votes", (_req, res) => {
     const { items, isOpen } = allVotes();
     res.json({ open: items.filter(isOpen), closed: items.filter((i) => !isOpen(i)) });
@@ -1125,6 +1315,13 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
       joinedAt: seat.joinedAt,
       ballots: items.flatMap((i) => i.vote.ballots.filter((b) => b.seat === seat.seat).map((b) => ({ subject: i.subject, kind: i.kind, choice: b.choice, at: b.at }))),
       awaiting: items.filter((i) => isOpen(i) && i.vote.eligible.includes(seat.seat) && !i.vote.ballots.some((b) => b.seat === seat.seat)),
+      // Invite codes are bearer secrets: only their public id is shown.
+      invites: store
+        .invites()
+        .filter((i) => i.by === seat.seat)
+        .reverse()
+        .map((i) => ({ id: inviteId(i.code), createdAt: i.createdAt, expiresAt: i.expiresAt, status: i.usedAt ? "used" : Date.parse(i.expiresAt) <= clock().getTime() ? "expired" : "open", usedBy: i.usedBy ?? null })),
+      removals: items.filter((i) => i.kind === "revocation" && (i.target === seat.seat || i.openedBy === seat.seat)),
     });
   });
 

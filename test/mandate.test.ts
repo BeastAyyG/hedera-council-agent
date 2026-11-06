@@ -56,8 +56,15 @@ async function withServer(opts: AppOptions, fn: (call: Call) => Promise<void>) {
   }
 }
 
+// The first seat founds the council; later seats join with an invite from a seat holder.
+const invite = async (call: Call, by: string) => {
+  const r = await call("POST", "/council/invites", { mocked: true, byNullifier: `mock:${by}` });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  return r.body.code as string;
+};
+const joinAs = async (call: Call, n: string, by?: string) => call("POST", "/council/join", { mocked: true, nullifier: n, ...(by ? { invite: await invite(call, by) } : {}) });
 const join3 = async (call: Call) => {
-  for (const n of ["a", "b", "c"]) assert.equal((await call("POST", "/council/join", { mocked: true, nullifier: n })).status, 200);
+  for (const [n, by] of [["a"], ["b", "a"], ["c", "a"]]) assert.equal((await joinAs(call, n!, by)).status, 200);
 };
 const ballot = (call: Call, path: string, who: string, choice: "yes" | "no") => call("POST", path, { choice, mocked: true, byNullifier: `mock:${who}` });
 const adopt = async (call: Call, text = EXAMPLE) => {
@@ -193,7 +200,7 @@ test("evaluateMandate: plain-sentence violations", () => {
     violations: [
       "45 HBAR is over the 40 HBAR per-payment limit",
       "would bring this month to 230 of 200 HBAR",
-      "0.0.9001 is not a registered payee",
+      "0.0.9001 is not a registered payee — new recipient",
       "purpose 'party' is not one of: venue, catering",
     ],
   });
@@ -335,7 +342,7 @@ test("outside the mandate: 2 no refuses with VOTE_FAILED; double ballot 409; str
     assert.equal((await call("POST", "/proposals", { proposal: prop("NO-1", 60, "0.0.1002", "Pay a party") })).body.decision, "PENDING_VOTE");
     assert.equal((await call("POST", "/proposals", { proposal: prop("NO-0", 10, "0.0.1002", "Pay the venue") })).body.decision, "SIGNED");
     // Joined after the vote opened: not eligible.
-    await call("POST", "/council/join", { mocked: true, nullifier: "late" });
+    assert.equal((await joinAs(call, "late", "b")).status, 200);
     const late = await ballot(call, "/proposals/NO-1/vote", "late", "yes");
     assert.equal(late.status, 403);
     assert.match(late.body.error, /was not on the council when the vote/);
@@ -403,11 +410,21 @@ test("revoke cancels PENDING_VOTE proposals and closes open instruction votes", 
     await adopt(call);
     await call("POST", "/proposals", { proposal: prop("RV-1", 70) });
     await call("POST", "/mandate/draft", { text: "Up to 1 HBAR each." });
-    const r = await call("POST", "/council/revoke", { mocked: true, byNullifier: "mock:a", seat: "council-seat:3" });
-    assert.equal(r.status, 200);
-    assert.deepEqual(r.body.cancelledProposals, ["RV-1"]);
-    assert.deepEqual(r.body.closedMandateVotes, ["M-2"]);
-    assert.match(r.body.detail, /1 pending proposals cancelled, 1 open instruction votes closed/);
+    const open = await call("POST", "/council/revoke", { mocked: true, byNullifier: "mock:a", seat: "council-seat:3" });
+    assert.equal(open.status, 202);
+    assert.deepEqual([open.body.voteOpened, open.body.subject, open.body.vote.eligible, open.body.vote.needed], [true, "R-1", ["council-seat:1", "council-seat:2"], 2]);
+    // Nothing happens until the other seats decide.
+    assert.equal((await call("GET", "/council/epoch")).body.epoch, 1);
+    await ballot(call, "/council/revocations/R-1/vote", "a", "yes");
+    const closing = await ballot(call, "/council/revocations/R-1/vote", "b", "yes");
+    assert.equal(closing.body.removed, true);
+    const r = closing.body.revocation;
+    assert.equal(r.by, "council vote R-1");
+    assert.deepEqual(r.cancelledProposals, ["RV-1"]);
+    assert.deepEqual(r.closedMandateVotes, ["M-2"]);
+    assert.match(r.detail, /1 pending proposals cancelled, 1 open instruction votes closed, removed by council vote R-1 \(2 of 2\)$/);
+    const rejected = (await events(call)).filter((e) => e.event === "MANDATE_REJECTED");
+    assert.deepEqual(rejected.map((e) => [e.proposalId, typeof e.meta?.rulesHash]), [["M-2", "string"]]);
     assert.equal((await ballot(call, "/proposals/RV-1/vote", "a", "yes")).status, 409);
     assert.equal((await ballot(call, "/mandate/M-2/vote", "a", "yes")).status, 409);
     const m = (await call("GET", "/mandate")).body;
@@ -439,7 +456,7 @@ test("no mandate: behaviour unchanged (large payment needs World ID; no vote fie
 test("mocked join returns the stored, mock:-prefixed nullifier", async () => {
   await withServer({ env: {} }, async (call) => {
     const j = await call("POST", "/council/join", { mocked: true, nullifier: "me" });
-    assert.deepEqual([j.body.joined, j.body.seat, j.body.nullifier], [true, "council-seat:1", "mock:me"]);
+    assert.deepEqual([j.body.joined, j.body.seat, j.body.nullifier, j.body.founder], [true, "council-seat:1", "mock:me", true]);
   });
 });
 
@@ -458,7 +475,7 @@ test("concurrent final ballots: the proposal is signed exactly once", async () =
   await withServer({ env: {}, chain }, async (call) => {
     await join3(call);
     await adopt(call);
-    for (const n of ["d", "e"]) await call("POST", "/council/join", { mocked: true, nullifier: n });
+    for (const n of ["d", "e"]) assert.equal((await joinAs(call, n, "a")).status, 200);
     assert.equal((await call("POST", "/proposals", { proposal: prop("CC-1", 60) })).body.decision, "PENDING_VOTE");
     await ballot(call, "/proposals/CC-1/vote", "a", "yes");
     await ballot(call, "/proposals/CC-1/vote", "b", "yes");
@@ -481,14 +498,19 @@ const fakeWorld = (async (_u: string, init?: RequestInit) => {
   const b = JSON.parse(String(init?.body));
   return new Response(JSON.stringify({ success: true, action: b.action, environment: b.environment, results: [{ identifier: "proof_of_human", success: true, nullifier: b.responses[0].nullifier }] }), { status: 200 });
 }) as typeof fetch;
-const proof = (nullifier: string, signal: string, action = "join-council") => ({
-  protocol_version: "4.0", nonce: "0x1", action, environment: "production",
+const proof = (nullifier: string, signal: string, action = "join-council", nonce = "0x1") => ({
+  protocol_version: "4.0", nonce, action, environment: "production",
   responses: [{ identifier: "proof_of_human", issuer_schema_id: 1, nullifier, expires_at_min: 1, signal_hash: hashSignal(signal), proof: ["1", "2", "3", "4", "5"] }],
 });
 
 test("World configured: ballots are World ID proofs under join-council, bound to subject, bytes and choice", async () => {
   await withServer({ env: WORLD_ENV, worldFetch: fakeWorld }, async (call) => {
-    for (const n of ["0x1", "0x2", "0x3"]) assert.equal((await call("POST", "/council/join", { idkitResult: proof(n, "council-join") })).body.joined, true);
+    assert.equal((await call("POST", "/council/join", { idkitResult: proof("0x1", "council-join") })).body.joined, true);
+    for (const [i, n] of ["0x2", "0x3"].entries()) {
+      const inv = await call("POST", "/council/invites", { seat: "council-seat:1", idkitResult: proof("0x1", "council-invite:council-seat:1", "join-council", `0xa${i}`) });
+      assert.equal(inv.status, 201, JSON.stringify(inv.body));
+      assert.equal((await call("POST", "/council/join", { idkitResult: proof(n, "council-join"), invite: inv.body.code })).body.joined, true);
+    }
     const d = (await call("POST", "/mandate/draft", { text: EXAMPLE })).body;
     const ctx = await call("POST", "/world/rp-context", { vote: true, subject: d.id, choice: "yes" });
     assert.equal(ctx.status, 200);

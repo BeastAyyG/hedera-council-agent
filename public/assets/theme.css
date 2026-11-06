@@ -135,7 +135,7 @@ body[data-page="report"]::before { content: ""; position: fixed; inset: 0 0 auto
 .step .no { font-size: 9px; color: var(--ink-3); display: flex; justify-content: space-between; letter-spacing: .08em; text-transform: uppercase; }
 .step h3 { font-family: var(--head); font-size: 15px; margin: 8px 0 6px; font-weight: 700; }
 .step p { margin: 0; font-size: 9.5px; color: var(--ink-2); line-height: 1.6; }
-.step[data-state="pass"] .no .st { color: var(--green); } .step[data-state="fail"] .no .st { color: var(--red); } .step[data-state="wait"] .no .st { color: #b7791f; }
+.step[data-state="pass"] .no .st { color: var(--green); } .step[data-state="fail"] .no .st { color: var(--red); } .step[data-state="wait"] .no .st { color: #9a6b15; }
 .step[data-state="fail"] { box-shadow: inset 0 2px 0 var(--red); } .step[data-state="pass"] { box-shadow: inset 0 2px 0 var(--green); }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0 0; }
 button, .btn { font-size: 10.5px; padding: 7px 12px; border: 1px solid var(--ink); background: var(--ink); color: var(--paper); cursor: pointer; text-decoration: none; display: inline-block; letter-spacing: .02em; }

@@ -120,6 +120,24 @@ export function verifyBundle(bundle: EvidenceBundle, policy: PublishedPolicy, au
     out.push(res("audit entry", "PASS", `entry ${seq} (${entry.event}) hash ${short(entry.hash)} is for ${bundle.proposalId}`));
   }
 
+  // 5b. Decisions under a standing instruction anchor its rulesHash: it must be the
+  // rulesHash the council adopted, as logged in the instruction's MANDATE_ADOPTED entry.
+  const under = entry?.meta?.rulesHash;
+  if (entry && under) {
+    const m = bundle.mandate as { id?: string; rulesHash?: string } | undefined;
+    const adoptedEntry = auditMessages.filter(isChainedEntry).find((e) => e.event === "MANDATE_ADOPTED" && (!m?.id || e.proposalId === m.id) && e.meta?.rulesHash === under);
+    const label = `${m?.id ?? "instruction"} rulesHash ${short(under)}`;
+    if (m?.rulesHash && m.rulesHash !== under) {
+      out.push(res("instruction", "FAIL", `entry ${entry.seq} anchors rulesHash ${short(under)} but the bundle's instruction ${m.id ?? ""} is ${short(m.rulesHash)}`));
+    } else if (adoptedEntry) {
+      out.push(res("instruction", "PASS", `${label} matches MANDATE_ADOPTED entry ${adoptedEntry.seq}`));
+    } else if (chain.partial || opts.truncated) {
+      out.push(res("instruction", "WARN", `${label}: its MANDATE_ADOPTED entry is not in the part of the log that was read`));
+    } else {
+      out.push(res("instruction", "FAIL", `${label} is not the rulesHash of any MANDATE_ADOPTED entry in the log`));
+    }
+  }
+
   // 6. The policy: published hash is real, and the decision committed to it.
   const policyNow = sha256(canonical(policy.policy));
   if (policyNow !== policy.hash) {

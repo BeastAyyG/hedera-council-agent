@@ -236,7 +236,10 @@ export async function processProposal(
   const payeeLookup = agent.payees?.lookup(proposal.transfer.payee) ?? null;
   const payeeStatus = payeeLookup?.status ?? "not-enforced";
   let verdictSeen: ZeroGVerdict | null = null;
-  const audit = (event: string, detail: string) => writeAudit(proposal.id, event, detail, anchors(proposal, verdictSeen, payeeStatus));
+  // Set once the active standing instruction has been applied: decisions under it anchor its rulesHash.
+  let underRules: string | null = null;
+  const audit = (event: string, detail: string) =>
+    writeAudit(proposal.id, event, detail, { ...anchors(proposal, verdictSeen, payeeStatus), ...(underRules ? { rulesHash: underRules } : {}) });
 
   // 1. Pay for the check, under the spending cap. No payment, no check.
   const price = agent.payer.priceAtomic;
@@ -288,8 +291,11 @@ export async function processProposal(
   if (noVerdict) return { ...afterVerdict, reason: noVerdict, ...(await audit("REFUSED_NO_VERDICT", noVerdict)) };
   const verdictNote = agent.allowNo0G && verdict.source !== "0g" ? " ALLOW_NO_0G is on: signed without a 0G verdict." : "";
 
-  // 3c. The recipient must be in the council payee registry, unexpired.
-  if (payeeLookup && payeeLookup.status !== "not-enforced" && payeeLookup.status !== "registered") {
+  // 3c. The recipient must be in the council payee registry, unexpired. Under an
+  // active standing instruction a recipient missing from the registry is a new
+  // recipient: 3d sends it to the council. Revoked or expired entries always refuse.
+  const newRecipient = mandate !== null && payeeLookup?.status === "unregistered";
+  if (payeeLookup && payeeLookup.status !== "not-enforced" && payeeLookup.status !== "registered" && !newRecipient) {
     return { ...afterVerdict, reason: payeeLookup.detail, ...(await audit("REFUSED_UNREGISTERED_PAYEE", `Payee registry lookup: ${payeeLookup.status}. ${payeeLookup.detail}`)) };
   }
 
@@ -299,6 +305,7 @@ export async function processProposal(
   let outcomeMandate: OutcomeMandate | null = null;
   let mandatePrefix = "";
   if (mandate) {
+    underRules = mandate.rulesHash;
     const ev = evaluateMandate(mandate.rules, proposal, { spentThisMonthTinybars: mandate.spentThisMonthTinybars, payeeStatus });
     outcomeMandate = { id: mandate.id, rulesHash: mandate.rulesHash, within: ev.within, violations: ev.violations };
     const why = ev.violations.join("; ");
@@ -440,6 +447,7 @@ export async function executePending(
     currentEpoch: ctx.currentEpoch,
     now,
     approvedBy,
+    allowUnregistered: votedThrough,
   });
   if (re.status === "too-early") return { kind: "too-early", secondsRemaining: re.secondsRemaining, reason: re.reason };
   if (re.status === "challenged") return { kind: "challenged", reason: re.reason };
@@ -451,6 +459,7 @@ export async function executePending(
     zeroGRequestId: prev.zeroGRequestId?.slice(0, 80) ?? null,
     zeroGModel: prev.zeroGSource === "0g" ? agent.zeroG.model.slice(0, 48) : null,
     verdictHash: sha256(prev.zeroGVerdictText + proposalHash),
+    ...(prev.mandate ? { rulesHash: prev.mandate.rulesHash } : {}),
   };
   const write = async (event: string, detail: string) => {
     try {
@@ -531,6 +540,7 @@ export async function resolveVote(
       zeroGRequestId: prev.zeroGRequestId?.slice(0, 80) ?? null,
       zeroGModel: prev.zeroGSource === "0g" ? agent.zeroG.model.slice(0, 48) : null,
       verdictHash: sha256(prev.zeroGVerdictText + proposalHash),
+      ...(prev.mandate ? { rulesHash: prev.mandate.rulesHash } : {}),
     };
     try {
       const r = await agent.hedera.auditEntry({ proposalId: proposal.id, event, detail, at: now.toISOString(), meta });
@@ -565,8 +575,9 @@ export async function resolveVote(
   if (!problem) {
     const payee = agent.payees?.lookup(proposal.transfer.payee, now) ?? null;
     payeeStatus = payee?.status ?? "not-enforced";
-    if (payee && payee.status !== "not-enforced" && payee.status !== "registered") {
-      problem = payee.status === "unregistered" ? "payee not registered" : `payee ${payee.status}`;
+    // The council just approved this payment, a new recipient included; revoked or expired entries still abort.
+    if (payee && payee.status !== "not-enforced" && payee.status !== "registered" && payee.status !== "unregistered") {
+      problem = `payee ${payee.status}`;
     }
   }
   const after = { ...closed, proposal, worldGateReason: `Council vote passed (${tally}): a majority of World-ID-verified seats approved this payment.`, usedWorldApproval: false };

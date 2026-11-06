@@ -5,42 +5,18 @@ Repo: https://github.com/BeastAyyG/hedera-council-agent
 Deadline: Saturday Nov 7, 09:00 IST, via the Hacker Dashboard (the dashboard time wins if it differs)
 
 ## Short description
-Tell it once. It guards the treasury. The owner writes a standing instruction in plain words. 0G compiles it into
-rules that code can check, and a council of World-ID-verified humans adopts them by vote, anchored on Hedera. The
-agent co-signs payments inside the rules automatically and sends everything else to a council vote.
+Tell it once. It guards the treasury. An AI agent holds one signing seat on a Hedera treasury council. The owner writes a spending instruction in plain words; 0G compiles it into checkable rules and a World-ID-verified council adopts them by vote. Payments inside the rules co-sign automatically; anything outside goes to a council vote. Every decision is hash-chained on HCS. Built and tested in simulated mode: 148 tests pass, demo 12/12, no real payment settled yet.
 
 ## Long description
-An AI agent that holds a treasury key is a liability. A bad prompt, a dishonest colleague or a prompt injection, and
-the money is gone. Asking a human to approve every payment defeats the point of an agent. This project sits between
-the two.
+An AI agent with a treasury key is a liability. One bad prompt, one dishonest proposer, one prompt injection, and the money is gone. Making a human approve every payment defeats the point of having an agent. This project sits between the two.
 
-**Tell it once.** The owner writes a standing instruction: "Pay registered vendors up to 50 HBAR each, at most 200 HBAR
-a month. Anything else goes to the council." 0G Private Computer compiles it into five fields of `MandateRules`
-(per-payment limit, monthly cap, payees, purposes, what to do outside). The output is validated strictly, and invalid
-output fails closed. The rules are shown back as a plain checklist written by code, not by the model. The AI never
-signs and never decides a payment. It only turns words into rules that humans read.
+The owner writes a standing instruction once, in plain words: "Pay registered vendors up to 50 HBAR each, at most 100 HBAR a month. Anything else goes to the council." 0G Private Computer compiles it into five checkable rules. The output is validated strictly, and invalid output creates nothing. The rules are shown back as a plain checklist written by code, not by the model. A council of World-ID-verified humans adopts the rules by majority vote, and every ballot is a World ID proof bound to the exact rules hash and the choice. The adopted hash is anchored in the Hedera audit log.
 
-**The council adopts it.** Council seats are one per human, joined with World ID Proof of Human. The instruction is
-adopted by majority vote, and every ballot is a World ID proof whose signal binds it to the exact rules hash and to the
-choice. The adopted rules hash is written to the Hedera HCS audit log (`MANDATE_ADOPTED`).
+After that, the agent decides alone. A payment inside the rules is co-signed with no vote. A payment outside them waits for a council vote. Before any signature, fixed code checks the transfer read back from Hedera against its description, checks the payee against the council registry, and checks the payment against the adopted rules. The agent pays a one-cent x402 check fee per payment, under a spending cap, and refuses an offer whose recipient is not the registered check service.
 
-**It guards the treasury.** A council member schedules each payment as a Hedera Scheduled Transaction out of a 2-of-2
-treasury, so the exact transfer is fixed on chain before anyone signs. The agent reads it back from the mirror node,
-pays a $0.01 x402 check fee in testnet USDC, gets a 0G verdict, and runs fixed checks: the transfer must match its
-description, the payee must be in the council registry, and the payment must be inside the adopted rules. Inside the
-rules, the agent adds the second signature, with no vote. Outside them (over the limit, over the monthly cap, or a
-payee the instruction does not name), the payment waits for a council vote. A majority of verified humans decides. A
-passed vote re-checks everything without paying the fee again, then signs.
+The AI never signs and never decides a payment. It turns words into rules that humans adopt. Code applies them. Every decision, ballot and adoption is a hash-chained HCS entry anyone can re-check in their browser or with `npm run verify`.
 
-**This fixes the old hole.** The first version compared a transfer only with the proposer's own description, so a
-dishonest proposer who wrote both passed. Now the amount and the recipient are checked against the owner's adopted
-rules, which the proposer cannot change.
-
-**Anyone can check it.** Every decision, ballot and adoption is a hash-chained HCS entry that commits to the
-published policy. `/verify.html` re-checks the chain in your own browser from a Hedera mirror node, and
-`npm run verify -- <id>` replays one decision. Safety nets from the first version still apply: a refusal on any
-mismatch, fail-closed 0G, an x402 payee-swap refusal, an optional challenge window with a re-check at execution, and
-seat revocation that cancels pending payments.
+Honest status: everything is written and tested against fakes, 148 tests and 12 demo scenes green. No real Hedera payment has settled, no real 0G call or World ID proof has run, and no credentials were available at build time. The demo is labelled simulated wherever it is simulated, and no simulated id is presented as real.
 
 ## Partner prizes to select, exactly 3 partners
 - Hedera: AI Agents That Pay: x402 on Hedera ($6,500), "No Solidity Allowed": Build with Hedera SDKs ($2,000)
@@ -91,9 +67,9 @@ seat revocation that cancels pending payments.
 
 ## Demo video
 2-3 minutes, 720p or better, human voiceover, no TTS, no sped-up footage, no phone recording, intro under 20 seconds.
-The script is in docs/demo-script.md: problem, the owner writes the instruction, 0G compiles it, the council adopts
-it with World ID, a payment inside it signs with no vote, a payment outside it goes to a council vote and signs, a
-payment over the monthly cap goes to a vote and is refused, then the public verify page.
+The script is in docs/demo-script.md: it opens with a mismatch refusal and the World ID gate on a large payment,
+then the owner writes the instruction, 0G compiles it, the council adopts it with World ID, a payment inside it signs
+with no vote, a payment outside it goes to a council vote and signs, then the public verify page.
 
 ## What is real vs simulated
 Fill this in at submission time, honestly. At build time everything ran in simulated mode. No real Hedera payment
@@ -114,7 +90,7 @@ Run `npm run ready`. It prints PASS / TODO / FAIL by group and exits 1 only on F
 | `npm run demo` | The twelve demo scenes |
 
 ## Submission checklist
-- [x] UI: `original-console/` (CODE_TANTRAFEST console) was REMOVED in the cleaned syncs to BeastAyyG (Nov 6, 21:30 and 23:00 IST). It stays on the AgastyaPandey side only.
+- [ ] UI: `original-console/` is the CODE_TANTRAFEST console, copied in at the owner's instruction (Oct 25, partly other authors, no Solidity included). Confirm with ETHGlobal or delete the folder and the `/original-console` link
 - [ ] UI: the Atlas and report pages are the original CODE_TANTRAFEST designs (Oct 25, before the event). Confirm with ETHGlobal that this satisfies From Scratch, or revert the UI merge (docs/ui-handoff.md)
 - [x] Repo public, README complete, .env never committed
 - [x] `npm test` all passing, `npm run demo` 12/12 scenes correct

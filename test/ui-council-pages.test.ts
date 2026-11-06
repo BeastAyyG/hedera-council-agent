@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const read = (path: string) => readFileSync(join(process.cwd(), "public", path), "utf8");
-const NAV = [["/", "Atlas"], ["/console.html", "Console"], ["/mandate.html", "Instructions"], ["/council.html", "Council"], ["/member.html", "My seat"], ["/report.html", "Report"], ["/policy", "Policy"], ["/audit/verify", "Audit"]];
+const NAV = [["/", "Atlas"], ["/console.html", "Console"], ["/mandate.html", "Instructions"], ["/council.html", "Council"], ["/member.html", "My seat"], ["/report.html", "Report"], ["/verify.html", "Verify log"]];
 const PAGES: Array<[string, string | null]> = [
   ["index.html", "/"], ["console.html", "/console.html"], ["report.html", "/report.html"], ["verify.html", null],
   ["mandate.html", "/mandate.html"], ["council.html", "/council.html"], ["member.html", "/member.html"],

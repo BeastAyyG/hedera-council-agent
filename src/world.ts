@@ -68,6 +68,11 @@ export function revokeSignal(seat: string): string {
   return `council-revoke:${seat}`;
 }
 
+// An invite is proven under the join action too, bound to the inviter's seat.
+export function inviteSignal(seat: string): string {
+  return `council-invite:${seat}`;
+}
+
 export function councilSignAction(proposalId: string): string {
   return `council-sign:${proposalId}`;
 }

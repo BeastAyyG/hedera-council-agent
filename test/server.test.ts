@@ -273,7 +273,7 @@ test("policy, audit verification and evidence bundles", async () => {
   });
 });
 
-test("/original-console is gone: the copied console was removed for the From Scratch rule", async () => {
+test("/original-console is gone (removed in the cleaned sync)", async () => {
   const app = await createApp({ statePath: null, env: {} });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));

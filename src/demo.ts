@@ -13,8 +13,8 @@
 // Scene 9: the owner's standing instruction is compiled (SIMULATED 0G unless keyed)
 //          and adopted 2 of 3 by mocked council members.
 // Scene 10: a large payment inside the instruction is signed with no vote and no World ID check.
-// Scene 11: a payment to a payee new to the instruction opens a council vote; 2 yes,
-//           signed after a re-check, without a second check fee.
+// Scene 11: a payment to a brand-new recipient (not in the payee registry) opens a
+//           council vote; 2 yes, signed after a re-check, without a second check fee.
 // Scene 12: a payment over the monthly cap opens a vote; 2 no, refused.
 // In real mode the paid check service (POST /check) is started in-process
 // unless CHECK_SERVICE_URL points elsewhere, and the agent pays it via x402.
@@ -175,7 +175,8 @@ async function main(): Promise<void> {
     const unit = mode === "real" ? TINYBARS_PER_HBAR / 100 : TINYBARS_PER_HBAR; // real runs move 1/100 of the HBAR
     const allowedA = payee(1);
     const allowedB = mode === "real" ? realPayee : "0.0.1002";
-    const newPayee = mode === "real" ? (env.DEMO_NEW_PAYEE_ACCOUNT_ID ?? "").trim() || agent.hedera.config.accountId : "0.0.1003";
+    // Simulated: 0.0.9001 is not in the demo payee registry, a genuinely new recipient.
+    const newPayee = mode === "real" ? (env.DEMO_NEW_PAYEE_ACCOUNT_ID ?? "").trim() || agent.hedera.config.accountId : "0.0.9001";
     const text = `Pay ${allowedA}${allowedB !== allowedA ? ` or ${allowedB}` : ""} up to ${(50 * unit) / TINYBARS_PER_HBAR} HBAR each, at most ${(100 * unit) / TINYBARS_PER_HBAR} HBAR a month. Anything else goes to the council.`;
     const compiled = await compileMandate(text, agent.zeroG);
     console.log(`\n--- Scene 9: Owner instruction compiled and adopted by the council ---`);
@@ -219,7 +220,8 @@ async function main(): Promise<void> {
     printScene(10, `A ${hbar(50 * unit)} payment inside the instruction: signed, no vote, no World ID check`, s10);
 
     const s11 = await processProposal(ma, proposal(`P-011${tag}`, newPayee, 30 * unit, "Pay the new AV vendor"), null, withSpend());
-    printScene(11, "A payment to a payee new to the instruction opens a council vote", s11);
+    printScene(11, `A payment to a new recipient (${newPayee}) opens a council vote`, s11);
+    if (s11.mandate) console.log(`Why: ${s11.mandate.violations.join("; ")}`);
     const feeBefore = ma.budget.spentAtomic;
     const s11v = s11.decision === "PENDING_VOTE" ? await voteOn(s11, ["yes", "yes"]) : s11;
     record(s11v);

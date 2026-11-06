@@ -160,5 +160,5 @@ Nav on every page: Atlas, Console, **Instructions** (`/mandate.html`), **Council
 Existing 8 scenes unchanged, then:
 9. Owner instruction compiled (simulated 0G unless keyed) and adopted 2 of 3 by mocked members.
 10. A payment inside the instruction is signed with no vote.
-11. A payment to a new payee opens a vote; 2 yes -> signed, without a second check fee.
+11. A payment to a payee not named in the instruction opens a vote; 2 yes -> signed, without a second check fee.
 12. A payment over the monthly cap opens a vote; 2 no -> refused.

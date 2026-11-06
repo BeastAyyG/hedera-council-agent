@@ -25,6 +25,8 @@ export interface RecheckInput {
   // Set when a council vote or the adopted standing instruction is the human
   // approval: the per-payment World ID check does not apply.
   approvedBy?: string | null;
+  // A council vote approved a recipient not in the registry; revoked or expired entries still abort.
+  allowUnregistered?: boolean;
 }
 
 export type Recheck =
@@ -52,7 +54,7 @@ export function recheckAtExecution(i: RecheckInput): Recheck {
   if (!check.matches) return { status: "aborted", reason: `proposal no longer matches its description (${check.mismatches.map((m) => m.field).join(", ")})` };
   const payee = i.payees?.lookup(i.proposal.transfer.payee, i.now) ?? null;
   const payeeStatus = payee?.status ?? "not-enforced";
-  if (payee && payee.status !== "not-enforced" && payee.status !== "registered") {
+  if (payee && payee.status !== "not-enforced" && payee.status !== "registered" && !(i.allowUnregistered && payee.status === "unregistered")) {
     return { status: "aborted", reason: payee.status === "unregistered" ? "payee not registered" : `payee ${payee.status}` };
   }
   const large = isLargeProposal(i.proposal, i.largeThresholdTinybars);

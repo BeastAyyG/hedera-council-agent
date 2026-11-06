@@ -19,6 +19,7 @@ import { buildPolicy } from "../src/policy.js";
 import type { Proposal } from "../src/proposal.js";
 import { createApp, type AppOptions } from "../src/server.js";
 import { StateStore } from "../src/store.js";
+import { voteSignal } from "../src/mandate.js";
 import { loadZeroGConfig } from "../src/zeroG.js";
 import { mockedWorldCheck, verifiedWorldCheck } from "../src/world.js";
 import { verifyBundle, type EvidenceBundle, type PublishedPolicy } from "../src/verify.js";
@@ -408,24 +409,38 @@ test("auth: with no key set the routes are open", async () => {
 // ---- seat revocation ----
 
 const joinSeat = (call: Call, n: string) => call("POST", "/council/join", { mocked: true, nullifier: n });
+const inviteAs = async (call: Call, by: string) => {
+  const r = await call("POST", "/council/invites", { mocked: true, byNullifier: `mock:${by}` });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  return r.body.code as string;
+};
+const joinWithInvite = async (call: Call, n: string, by: string) =>
+  call("POST", "/council/join", { mocked: true, nullifier: n, invite: await inviteAs(call, by) });
 
 test("revoke: a seat holder revokes; epoch 1 -> 2, pending proposals cancelled, one REVOKED entry, rejoin blocked", async () => {
   await withServer({ env: WIN }, async (call) => {
     await joinSeat(call, "a");
-    await joinSeat(call, "b");
+    assert.equal((await joinWithInvite(call, "b", "a")).status, 200);
     assert.deepEqual((await call("GET", "/council/epoch")).body, { epoch: 1, revokedSeats: 0 });
     await call("POST", "/proposals", { proposal: sprop("V-1") });
     await call("POST", "/proposals", { proposal: sprop("V-2", 20_000_000) });
     await call("POST", "/proposals/V-2/challenge", { reason: "hold" });
-    const r = await call("POST", "/council/revoke", { mocked: true, byNullifier: "mock:a", seat: "council-seat:2" });
-    assert.equal(r.status, 200);
-    assert.equal(r.body.epoch, 2);
-    assert.deepEqual(r.body.cancelledProposals.sort(), ["V-1", "V-2"]);
-    assert.equal(r.body.detail, "epoch 1 -> 2, seat council-seat:2 revoked, 2 pending proposals cancelled");
+    // Removing another seat opens a vote among the other seats; nothing happens until it passes.
+    const open = await call("POST", "/council/revoke", { mocked: true, byNullifier: "mock:a", seat: "council-seat:2" });
+    assert.equal(open.status, 202);
+    assert.deepEqual([open.body.voteOpened, open.body.subject, open.body.vote.eligible, open.body.vote.needed], [true, "R-1", ["council-seat:1"], 1]);
+    assert.deepEqual((await call("GET", "/council/epoch")).body, { epoch: 1, revokedSeats: 0 });
+    const cast = await call("POST", "/council/revocations/R-1/vote", { choice: "yes", mocked: true, byNullifier: "mock:a" });
+    assert.equal(cast.status, 200);
+    assert.equal(cast.body.removed, true);
+    const r = cast.body.revocation;
+    assert.equal(r.epoch, 2);
+    assert.deepEqual(r.cancelledProposals.sort(), ["V-1", "V-2"]);
+    assert.equal(r.detail, "epoch 1 -> 2, seat council-seat:2 revoked, 2 pending proposals cancelled, removed by council vote R-1 (1 of 1)");
     assert.deepEqual((await call("GET", "/council/epoch")).body, { epoch: 2, revokedSeats: 1 });
     const events = (await call("GET", "/audit")).body.entries.filter((e: any) => e.event === "REVOKED");
     assert.equal(events.length, 1);
-    assert.equal(events[0].detail, r.body.detail);
+    assert.equal(events[0].detail, r.detail);
     // Cancelled: not executable, shown as CANCELLED, approval gone.
     const ex = await call("POST", "/proposals/V-1/execute");
     assert.equal(ex.status, 409);
@@ -435,7 +450,9 @@ test("revoke: a seat holder revokes; epoch 1 -> 2, pending proposals cancelled, 
     const back = await joinSeat(call, "b");
     assert.equal(back.status, 403);
     assert.equal(back.body.error, "This seat was revoked");
-    assert.equal((await joinSeat(call, "c")).body.seat, "council-seat:3");
+    // Joining now needs an invite from a current seat holder.
+    assert.equal((await joinSeat(call, "c")).status, 403);
+    assert.equal((await joinWithInvite(call, "c", "a")).body.seat, "council-seat:3");
     assert.equal((await call("GET", "/council/seats")).body.count, 2);
     // Evidence for a cancelled proposal names the revocation and verifies.
     const bundle: EvidenceBundle = (await call("GET", "/proposals/V-1/evidence")).body;
@@ -479,7 +496,10 @@ test("revoke: mocked is refused when World is configured, and a real proof must 
   await withServer({ env: WORLD, worldFetch: world }, async (call) => {
     assert.equal((await call("POST", "/council/revoke", { mocked: true, byNullifier: "mock:a", seat: "council-seat:1" })).status, 403);
     assert.equal((await call("POST", "/council/join", { idkitResult: proof("join-council", "0x1", "council-join") })).body.joined, true);
-    assert.equal((await call("POST", "/council/join", { idkitResult: proof("join-council", "0x2", "council-join") })).body.joined, true);
+    // Later seats join with an invite from a current seat holder, proven under the join action.
+    const inv = await call("POST", "/council/invites", { seat: "council-seat:1", idkitResult: proof("join-council", "0x1", "council-invite:council-seat:1") });
+    assert.equal(inv.status, 201, JSON.stringify(inv.body));
+    assert.equal((await call("POST", "/council/join", { idkitResult: proof("join-council", "0x2", "council-join"), invite: inv.body.code })).body.joined, true);
     // A join proof cannot be replayed as a revocation, and a revocation names its seat.
     const replayedJoin = await call("POST", "/council/revoke", { idkitResult: proof("join-council", "0x1", "council-join"), seat: "council-seat:2" });
     assert.equal(replayedJoin.status, 403);
@@ -498,9 +518,15 @@ test("revoke: mocked is refused when World is configured, and a real proof must 
     assert.equal((await call("POST", "/world/rp-context", { revoke: true })).status, 404);
     assert.equal((await call("POST", "/world/rp-context", { join: true })).body.signal, "council-join");
     // Seat 1's holder revokes seat 2 with the same nullifier they joined with.
-    const ok = await call("POST", "/council/revoke", { idkitResult: proof("join-council", "0x1", "council-revoke:council-seat:2"), seat: "council-seat:2" });
-    assert.equal(ok.status, 200);
-    assert.equal(ok.body.by, "another seat holder");
+    // Removing another seat opens a vote; the only other seat decides it.
+    const open = await call("POST", "/council/revoke", { idkitResult: proof("join-council", "0x1", "council-revoke:council-seat:2"), seat: "council-seat:2" });
+    assert.equal(open.status, 202);
+    assert.deepEqual([open.body.voteOpened, open.body.subject, open.body.vote.eligible, open.body.vote.needed], [true, "R-1", ["council-seat:1"], 1]);
+    const cast = await call("POST", "/council/revocations/R-1/vote", { choice: "yes", idkitResult: proof("join-council", "0x1", voteSignal("R-1", "revoke:council-seat:2:1", "yes")) });
+    assert.equal(cast.status, 200);
+    assert.equal(cast.body.removed, true);
+    const ok = cast.body.revocation;
+    assert.equal(ok.by, "council vote R-1");
     assert.equal((await call("POST", "/council/join", { idkitResult: proof("join-council", "0x2", "council-join") })).body.error, "This seat was revoked");
   });
 });

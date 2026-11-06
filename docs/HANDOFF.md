@@ -10,7 +10,7 @@ Written 2026-11-06 ~17:00 UTC. Read this first, then `docs/mandate-spec.md` (the
 | `main` | Verified state, this file included. 148 tests pass, demo 12/12 |
 | `hoplite/aspendos-096475b8` | Branch the work was done on; same as `main` after the PR merge |
 | `wip/hardening-round2` | **Partial, unverified** snapshot of the hardening round below (10 files in `src/` + `test/mandate.test.ts`). Do not merge as is |
-| Submission repo | https://github.com/BeastAyyG/hedera-council-agent: **not updated**. The agent has no push access. Push `main` there yourself |
+| Submission repo | https://github.com/BeastAyyG/hedera-council-agent: **current with AgastyaPandey main through PR #3** (commit 5df9626, synced Nov 6). The agent has no push access; the next sync follows PR #4 |
 | Fork | https://github.com/BeastAyyG/hedera-council-agent-1 (branch `ui/paper-motion`, older UI work only) |
 
 ## Run it
@@ -62,7 +62,7 @@ Verified: 148/148 tests, demo 12/12, preflight no FAIL, ready no FAIL, simulated
 
 1. **Invites.** Today anyone with World ID can take a seat. After the founder, joining should need a single-use invite from a current seat holder (`POST /council/invites`, `POST /council/join {invite}`, 24 h expiry, audit SEAT_INVITED/SEAT_JOINED). UI: "Invite a member" on `/council.html`, demo "Add a demo member" auto-invites.
 2. **Removal by vote.** Today any one member can remove any other seat. Self-removal stays immediate; removing another seat opens a vote (subject `R-<n>`, target excluded from voters, majority), then applies the existing revocation effects.
-3. **New payee under an instruction.** Today an unregistered payee is refused by the registry even when an instruction says "anything else goes to the council". Under an active instruction it should be a violation that goes to a vote; revoked/expired payees stay hard refusals; the post-vote re-check must accept it. Then change demo scene 11 to a truly new payee (0.0.9001).
+3. **New payee under an instruction.** Today a payee not named in the instruction (registered, e.g. 0.0.1003) goes to a council vote, which is the demo scene 11 path. A truly unregistered payee (for example 0.0.9001) is refused outright by the registry with no vote; revoked/expired payees stay hard refusals. If the post-vote re-check is ever extended to a payee outside the registry, it must accept it only after the vote passes.
 4. **Policy text** (`src/policy.ts`) still says large payments always need World ID; describe instructions, votes, invites, removal votes.
 5. **Audit completeness.** Put `rulesHash` in decision entries made under an instruction and make `npm run verify` check it against MANDATE_ADOPTED; log restart-cancelled votes; log MANDATE_REJECTED when a revocation closes an instruction vote.
 
