@@ -20,7 +20,7 @@ import { mockedWorldCheck } from "../src/world.js";
 
 const REGISTERED = "0.0.5001";
 const simHedera = () =>
-  new HederaClient({ network: "testnet", accountId: "", privateKey: "", topicId: "", treasuryAccountId: "" }, "simulated");
+  new HederaClient({ network: "testnet", accountId: "", privateKey: "", topicId: "", treasuryAccountId: "", topicAdminKey: "" }, "simulated");
 
 function makeAgent(over: Partial<CouncilAgent> & { offeredPayTo?: string } = {}): CouncilAgent {
   const hedera = simHedera();
@@ -254,7 +254,7 @@ test("simulated mode with no key keeps its labelled verdict; a required verdict 
 });
 
 test("real Hedera mode with no 0G key refuses unless overridden (pure rule)", () => {
-  const real = new HederaClient({ network: "testnet", accountId: "0.0.5", privateKey: "k", topicId: "", treasuryAccountId: "0.0.5" }, "real");
+  const real = new HederaClient({ network: "testnet", accountId: "0.0.5", privateKey: "k", topicId: "", treasuryAccountId: "0.0.5", topicAdminKey: "" }, "real");
   const sim = { text: "[SIMULATED 0G verdict] x", requestId: null, model: "m", source: "simulated" as const };
   const live = { text: "ok", requestId: "r-1", model: "m", source: "0g" as const };
   const down = { text: "[0G verdict unavailable: boom] x", requestId: null, model: "m", source: "unavailable" as const };

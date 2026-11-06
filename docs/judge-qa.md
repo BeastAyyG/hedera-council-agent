@@ -76,9 +76,10 @@ with the environment pinned server-side (`src/world.ts` `verifyWorldProof`). It 
 revoked nullifier stays blocked (`StateStore.addSeat`). MOCKED joins exist only when World is not configured and
 never on mainnet (`mockedAllowed`).
 
-**Honest limit:** `POST /council/join` has no invite list. World ID stops one human from taking two seats, but it
-does not decide *which* humans sit on the council. A production version needs an admission rule, for example the
-owner or a council vote admitting each seat.
+**Admission:** after the founder, joining needs a single-use invite from a current seat holder (`POST
+/council/invites`, 24 h expiry, shown once on `/council.html`). World ID stops one human from taking two seats,
+and the invite decides *which* humans sit on the council. Removing another seat is a council vote (subject
+`R-<n>`, the target is excluded from voters, majority), never a single signature; self-removal stays immediate.
 
 ## What if a majority colludes?
 
@@ -126,9 +127,12 @@ The server is trusted to tally votes and apply the rules. The HCS log makes its 
 but there are limits:
 
 - The log records that the server accepted a ballot from a seat. It does not contain the World ID proof itself.
-- Payment decisions name the instruction id but do not carry its `rulesHash` in the HCS entry (it is in the outcome
-  and in the evidence bundle).
-- No script recomputes `rulesHash` from `GET /mandate` and compares it with `MANDATE_ADOPTED`. That check is manual.
+- Decision entries made under an instruction carry its `rulesHash`, and `npm run verify` checks it against the
+  `MANDATE_ADOPTED` entry. `verify` reads the audit log from a Hedera mirror node in real mode, never from the
+  server's local log (in simulated mode there is no mirror node, so it reads the server log and says so).
+- The audit topic is created with a submit key the agent holds and an admin key the council holds
+  (`HEDERA_TOPIC_ADMIN_KEY`, optional): the agent can append but cannot rewrite history. With no admin key set,
+  the topic has no admin key and is immutable.
 
 There are no smart contracts.
 
@@ -166,18 +170,21 @@ Everything that touches a partner network:
 
 1. Nothing has run against real Hedera, 0G or World. The real-mode paths are tested against fakes only.
 2. State is on one server: proposals are in memory, and the rest is in a JSON file. A restart cancels open payment
-   votes, and that cancellation is not written to the audit log.
-3. Anyone with World ID can join the council: there is no admission rule.
-4. Any single seat holder can revoke any seat, with no vote.
+   votes, and that cancellation is written to the audit log as `VOTE_CANCELLED_RESTART`.
+3. Admission is by invite from a current seat holder, not open: after the founder, joining needs a single-use
+   invite (24 h expiry). A majority of colluding seat holders can still approve anything outside the instruction.
+4. Removing another seat is a council vote (target excluded from voters, majority), never a single signature.
+   Self-removal stays immediate.
 5. A council of one seat adopts an instruction alone. There is no minimum council size.
 6. An adopted instruction can only be replaced, not switched off, and revocation does not deactivate it.
 7. Purpose keywords are checked against the proposer's own purpose text.
 8. The monthly spend is this server's record of payments it signed (UTC calendar month), including payments signed
    before the instruction was adopted.
-9. Ballot proofs are not in the audit log, and payment decisions do not anchor the instruction's `rulesHash`.
-10. The hashed policy (`src/policy.ts`) still says large payments need a per-payment World ID approval. The instruction
-    exception lives in the `mandate` field next to it, which is outside the hash, so the policy hash does not change
-    on adoption.
+9. Ballot proofs are not in the audit log. Decision entries under an instruction carry its `rulesHash`, checked by
+   `npm run verify` against `MANDATE_ADOPTED`.
+10. The published policy (`src/policy.ts`) describes standing instructions, council votes, invites and removal
+    votes; the instruction itself lives in the `mandate` field next to the hashed policy, outside the hash,
+    so adopting one does not change the policy hash.
 11. In the demo real-mode setup, the agent key and the council member key (`.data/council.json`) are on the same
     server. A real deployment keeps the member key elsewhere.
 12. One shared API key (`COUNCIL_API_KEY`) guards the write routes, including ballots. The pages keep it in

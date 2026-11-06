@@ -36,7 +36,7 @@ const T0 = new Date("2026-11-06T12:00:00.000Z");
 const at = (seconds: number) => new Date(T0.getTime() + seconds * 1000);
 
 function makeAgent(over: Record<string, unknown> = {}) {
-  const hedera = new HederaClient({ network: "testnet", accountId: "", privateKey: "", topicId: "", treasuryAccountId: "" }, "simulated");
+  const hedera = new HederaClient({ network: "testnet", accountId: "", privateKey: "", topicId: "", treasuryAccountId: "", topicAdminKey: "" }, "simulated");
   return {
     hedera,
     budget: new SpendingCap(1_000_000),

@@ -2,7 +2,7 @@
 // casting a ballot (World ID or a DEMO identity), and the tally / vote card renderers.
 // The server decides everything; this module only relays ballots and draws what it returns.
 import { api, emit, hbar } from "./api.js";
-import { runWorldFlow, runWorldBallot, runMockedFlow } from "./world-flow.js";
+import { runWorldFlow, runWorldBallot, runWorldInvite, runMockedFlow } from "./world-flow.js";
 import { agentMarkup } from "./council-scene.js";
 import { reduced, replay } from "./motion.js";
 
@@ -69,12 +69,62 @@ export function feedback(statusEl, qrEl) {
 }
 
 // ---------- join ----------
-export async function joinCouncil({ world, fb }) {
+// Demo only: once a seat exists, a join needs an invite from a current seat holder.
+// The demo identity in this browser invites the newcomer first, so "Add a demo member"
+// works in one click. Returns the invite code, null when no invite is needed (the
+// founder joins freely), or false when no invite could be made (the error is already shown).
+export async function autoInvite({ world, fb }) {
+  if (world.configured || !world.mockedAllowed) return null;
+  const seats = await api.seats().catch(() => ({ ok: false }));
+  if (!seats.ok || seats.data.count === 0) return null;
+  const me = identities.current();
+  if (!me?.nullifier) {
+    fb.set("Joining needs an invite from a current seat holder, and this browser holds no seat to invite with. Join from the link a member shared.", "bad");
+    return false;
+  }
+  const res = await api.invite({ mocked: true, byNullifier: me.nullifier });
+  if (!res.ok) {
+    if (!fb.needKey(res)) fb.set(res.data?.error || "Could not create an invite.", "bad");
+    return false;
+  }
+  return res.data.code;
+}
+
+// A seat holder issues a single-use invite (24 hours). Demo: the current demo identity
+// invites. Real: a fresh World ID proof under the join action, signal "council-invite:<seat>".
+export async function createInvite({ world, identity, fb }) {
+  if (world.configured) {
+    if (!identity) return { ok: false, status: 0, data: { error: "Join the council first: only a seat holder can invite." } };
+    fb.set("Preparing World ID…", "wait");
+    try {
+      const res = await runWorldInvite({ seat: identity.seat, onQr: (_u, svg) => fb.qr(svg), onStatus: (t) => fb.set(t, "wait") });
+      if (!res.ok && !fb.needKey(res)) fb.set(res.data?.error || "Could not create an invite.", "bad");
+      return res;
+    } catch {
+      fb.set("Could not reach the server. Try again.", "bad");
+      return { ok: false, status: 0, data: {} };
+    } finally { fb.clearQr(); }
+  }
+  if (!world.mockedAllowed) return { ok: false, status: 0, data: { error: "World ID is not configured here and demo identities are disabled." } };
+  if (!identity?.nullifier) return { ok: false, status: 0, data: { error: "Pick a demo identity under Act as, or join the council first." } };
+  const res = await api.invite({ mocked: true, byNullifier: identity.nullifier });
+  if (!res.ok && !fb.needKey(res)) fb.set(res.data?.error || "Could not create an invite.", "bad");
+  return res;
+}
+
+export async function joinCouncil({ world, fb, invite = null }) {
+  // Demo: joining with an invite link uses that code; otherwise, once a seat exists,
+  // the demo identity in this browser invites first (see autoInvite).
+  if (!world.configured && world.mockedAllowed && invite === null) {
+    const code = await autoInvite({ world, fb });
+    if (code === false) return { ok: false, status: 0, data: {} };
+    invite = code;
+  }
   fb.set(world.configured ? "Preparing World ID…" : "Recording a MOCKED council proof (demo only)…", "wait");
   try {
     const res = world.configured
-      ? await runWorldFlow({ join: true, onQr: (_u, svg) => fb.qr(svg), onStatus: (t) => fb.set(t, "wait") })
-      : world.mockedAllowed ? await runMockedFlow({ join: true })
+      ? await runWorldFlow({ join: true, invite, onQr: (_u, svg) => fb.qr(svg), onStatus: (t) => fb.set(t, "wait") })
+      : world.mockedAllowed ? await runMockedFlow({ join: true, invite })
       : { ok: false, status: 0, data: { error: "World ID is not configured here and demo identities are disabled." } };
     if (res.ok) {
       identities.add({ seat: res.data.seat, source: world.configured ? "world" : "mocked", nullifier: world.configured ? null : res.data.nullifier, joinedAt: new Date().toISOString() });

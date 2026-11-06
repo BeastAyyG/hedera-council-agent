@@ -156,7 +156,8 @@ State-changing routes marked **key** need `COUNCIL_API_KEY` when it is set.
 | `POST /mandate/:id/vote` **key** | A ballot on adopting an instruction (same body as above). On a majority yes: adopted, the previous one is superseded, `MANDATE_ADOPTED` is logged |
 | `GET /council/votes` | `{open, closed}` votes on instructions and payments, with violations and tallies |
 | `GET /council/members/:seat` | One member: joined, ballots cast, votes awaiting them. Public, no nullifiers |
-| `POST /council/join` | Proof of Human council join: one seat per nullifier (`join-council` action) |
+| `POST /council/join` | Proof of Human council join: one seat per nullifier (`join-council` action). The first seat founds the council; every later seat needs a single-use invite from a current seat holder (24 h expiry) |
+| `POST /council/invites` **key** | A seat holder issues a single-use invite (24 h expiry, shown once). Demo: `{mocked: true, byNullifier}`. Real: a World ID proof under the join action, signal `council-invite:<seat>`, one invite per proof |
 | `GET /council/seats`, `GET /council/epoch` | Current seats and the revocation epoch |
 | `POST /council/revoke` **key** | A current seat holder revokes a seat: epoch +1, the nullifier is blocked from rejoining, pending payments and open payment votes are cancelled, open instruction votes are closed, one `REVOKED` entry |
 | `POST /payees/:account/revoke` **key** | Revokes a registry entry at runtime (`PAYEE_REVOKED`) |
@@ -361,8 +362,22 @@ Do not put simulated ids here.
   needs a fresh approval before execution.
 - A council of one seat adopts an instruction alone (needed = 1). The quorum is a majority of the seats when the vote
   opened, not a minimum council size.
-- `POST /council/join` accepts any verified human, with no invite list: World ID stops one person taking two seats,
-  but does not choose who sits on the council.
+- Admission is by invite, not open: the first seat founds the council, and every later seat needs a single-use invite
+  from a current seat holder (24 h expiry, shown once, `/council.html` "Invite a member"). World ID stops one person
+  taking two seats; the invite decides *which* humans sit on the council. Removing another seat is a council vote
+  (subject `R-<n>`, target excluded from voters, majority), never a single signature; self-removal stays immediate.
+- A payment to a payee the instruction does not name goes to a council vote, including a payee with no registry
+  entry at all (under an active instruction an unregistered payee is a new recipient, not a proven-bad one).
+  With no instruction active, an unregistered payee is refused outright by the registry with no vote. Revoked or
+  expired payees stay hard refusals, and the post-vote re-check still refuses them.
+- The audit log is verified from a Hedera mirror node in real mode, never from the server's local log. The audit
+  topic is created with a submit key the agent holds and an admin key the council holds (`HEDERA_TOPIC_ADMIN_KEY`,
+  optional); with no admin key set the topic has no admin key and is immutable. Decision entries made under an
+  instruction carry its `rulesHash`, checked against the `MANDATE_ADOPTED` entry by `npm run verify`.
+- World ID nullifiers are one-time-use per action, and the store is per action, not one global set: join, ballots
+  and removals all prove under the `join-council` action so the same nullifier identifies the seat, while single use
+  is enforced per proof (ballot signals bind subject and choice, approvals are consumed per proposal, invites per
+  proof nonce). A member who joined can still vote; a second ballot from the same seat is a 409.
 
 ## What is not in scope
 

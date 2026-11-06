@@ -47,6 +47,38 @@ test("PENDING_VOTE is a waiting state on the journey, never a refusal", async ()
   assert.equal(within.stages[2].note, "Standing instruction");
 });
 
+test("invite member UI: create once, copy, past invites, ?invite= join", async () => {
+  const council = read("council.html");
+  assert.match(council, /id="invite"/, "council has the Invite a member section");
+  assert.match(council, /Create an invite/, "create button");
+  assert.match(council, /Shown once — copy it now/, "once-only warning");
+  assert.match(council, /qs\("invite"\)/, "?invite= is read");
+  assert.match(council, /Join with this invite/, "invite-link join button");
+  assert.match(council, /joinCouncil\(\{ world, fb, invite: code \}\)/, "invite-link join consumes the code");
+  assert.match(council, /createInvite\(\{ world, identity, fb \}\)/, "create goes through the shared helper");
+  assert.match(council, /api\.member\(identity\.seat\)/, "past invites come from the member endpoint");
+  const shared = read("assets/council-votes.js");
+  assert.match(shared, /export async function autoInvite/, "auto-invite helper exists");
+  assert.match(shared, /export async function createInvite/, "create-invite helper exists");
+  assert.match(shared, /api\.invite\(\{ mocked: true, byNullifier: me\.nullifier \}\)/, "demo auto-invite uses the current demo identity");
+  assert.match(shared, /runWorldInvite\(\{ seat: identity\.seat/, "real invites prove under the join action");
+  assert.match(shared, /runMockedFlow\(\{ join: true, invite \}\)/, "demo join carries the invite code");
+  assert.match(shared, /runWorldFlow\(\{ join: true, invite/, "real join carries the invite code");
+  assert.match(read("assets/api.js"), /invite: \(body\) => call\("POST", "\/council\/invites", body\)/, "api.invite");
+  const flow = read("assets/world-flow.js");
+  assert.match(flow, /export async function runWorldInvite/, "real invite proof helper");
+  assert.match(flow, /invite: true, seat/, "invite proof signal is council-invite:<seat>");
+  assert.match(flow, /runMockedFlow\(\{ proposalId, join = false, invite = null \}\)/, "mocked flow takes an invite");
+  // The demo join no longer fails once a seat exists: console.html routes its mocked
+  // join through the same auto-invite path as the council page.
+  assert.match(read("console.html"), /joinCouncil\(\{ world, fb: \{/, "console mocked join uses joinCouncil");
+  assert.match(read("console.html"), /const invite = qs\("invite"\)/, "console passes an invite link through");
+  // No new colours or fonts: the invite UI uses only existing classes and tokens.
+  assert.match(read("assets/council-pages.css"), /\.cv-invite-once\{margin-top:14px;border:1px solid var\(--hair\)/, "once box uses the hairline token");
+  const { autoInvite } = await import(pathToFileURL(join(process.cwd(), "public/assets/council-votes.js")).href);
+  assert.equal(typeof autoInvite, "function");
+});
+
 test("council pages share one module and label waiting decisions as the council", async () => {
   const { decisionLabel } = await import(pathToFileURL(join(process.cwd(), "public/assets/council-votes.js")).href);
   assert.deepEqual(decisionLabel("PENDING_VOTE"), { label: "Waiting for the council", tone: "warn" });

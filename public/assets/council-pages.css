@@ -91,6 +91,12 @@ body.cv-page{overflow-x:clip}
 
 /* members grid */
 .cv-members{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,190px),1fr));gap:12px}
+/* Invite section: the once-only code box and the invite-link banner. Same tokens as the rest. */
+.cv-invite-once{margin-top:14px;border:1px solid var(--hair);padding:12px}
+.cv-invite-once .cv-keybox{margin-top:10px}
+.cv-invite-banner{margin-top:14px;border:1px dashed var(--signal);background:rgba(154,107,21,.07);padding:10px 12px}
+.cv-invite-banner .cv-note{margin:0 0 10px}
+.cv-invite-list{margin-top:14px}
 .cv-member{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;align-items:center;border:1px solid var(--hair);padding:12px;color:inherit;text-decoration:none;transition:border-color .15s,background-color .15s}
 .cv-member:hover{border-color:var(--ink);background:rgba(255,255,255,.35)}
 .cv-member:focus-visible{outline:2px solid var(--red);outline-offset:2px}

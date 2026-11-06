@@ -243,6 +243,7 @@
 <script type="module">
 import { api, bus, hbar, qs } from "/assets/api.js";
 import { runWorldFlow, runMockedFlow } from "/assets/world-flow.js";
+import { joinCouncil } from "/assets/council-votes.js";
 import { replay, stagger, whileWorking as animateWorking, reduced, runFlow } from "/assets/motion.js";
 import { initJudge } from "/assets/judge.js";
 import { mountJourney, renderTransfer } from "/assets/council-scene.js";
@@ -653,9 +654,18 @@ $("join-btn").onclick = () => withAction($("join-btn"), async () => {
   status(world.configured ? "Preparing World ID…" : world.mockedAllowed ? "Recording MOCKED council proof…" : "Checking World ID configuration…", "wait");
   journey.setActivity("working");
   try {
+    // Joining with an invite link uses that code; in demo mode, once a seat exists the
+    // demo identity in this browser invites first (see council-votes.js joinCouncil),
+    // so the demo join keeps working after the first seat.
+    const invite = qs("invite");
     const res = world.configured
-      ? await runWorldFlow({ join: true, onQr: (_u, svg) => { const i = el("img"); i.src = svg; i.alt = "Scan with World App"; i.className = "my-3 h-56 w-56 bg-white p-2"; $("qr").replaceChildren(i); }, onStatus: (text) => status(text, "wait") })
-      : world.mockedAllowed ? await runMockedFlow({ join: true }) : { ok: false, data: { error: "World ID is not configured here." } };
+      ? await runWorldFlow({ join: true, invite, onQr: (_u, svg) => { const i = el("img"); i.src = svg; i.alt = "Scan with World App"; i.className = "my-3 h-56 w-56 bg-white p-2"; $("qr").replaceChildren(i); }, onStatus: (text) => status(text, "wait") })
+      : world.mockedAllowed ? await joinCouncil({ world, fb: {
+          set: (t, tone) => status(t, tone),
+          qr: (svg) => { const i = el("img"); i.src = svg; i.alt = "Scan with World App"; i.className = "my-3 h-56 w-56 bg-white p-2"; $("qr").replaceChildren(i); },
+          clearQr: () => $("qr").replaceChildren(),
+          needKey: (r) => needKey(r),
+        }, invite }) : { ok: false, data: { error: "World ID is not configured here." } };
     if (res.ok) status(`Joined: ${res.data.seat} (${res.data.proof}).`, "ok");
     else requestError(res);
     await refreshSeats();

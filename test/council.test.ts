@@ -13,7 +13,7 @@ import type { Proposal } from "../src/proposal.js";
 
 const simHedera = () =>
   new HederaClient(
-    { network: "testnet", accountId: "", privateKey: "", topicId: "", treasuryAccountId: "" },
+    { network: "testnet", accountId: "", privateKey: "", topicId: "", treasuryAccountId: "", topicAdminKey: "" },
     "simulated",
   );
 

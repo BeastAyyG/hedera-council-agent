@@ -61,6 +61,11 @@
           <div class="cv-members" id="memberList"></div>
         </section>
 
+        <section class="doc-section" id="invite" aria-labelledby="inviteTitle">
+          <div class="doc-section-head"><h2 class="doc-section-title" id="inviteTitle">Invite a member</h2><span class="doc-folio" id="inviteFolio">single use, 24 hours</span></div>
+          <div id="inviteBox"></div>
+        </section>
+
         <section class="doc-section" id="closed" aria-labelledby="closedTitle">
           <div class="doc-section-head"><h2 class="doc-section-title" id="closedTitle">Closed votes</h2><span class="doc-folio" id="closedFolio"></span></div>
           <div id="closedList"></div>
@@ -78,8 +83,8 @@
 </div>
 <script src="/vendor/idkit.js"></script>
 <script type="module">
-import { api, hbar } from "/assets/api.js";
-import { $, el, when, identities, loadWorld, isDemo, feedback, mountIdentityBar, voteCard, updateVoteCard, showStamp, castBallot, seatAvatar, sourceBadge, decisionLabel, pill, poll, fillChrome } from "/assets/council-votes.js";
+import { api, hbar, qs } from "/assets/api.js";
+import { $, el, when, identities, loadWorld, isDemo, feedback, mountIdentityBar, voteCard, updateVoteCard, showStamp, castBallot, seatAvatar, sourceBadge, decisionLabel, pill, poll, fillChrome, joinCouncil, createInvite } from "/assets/council-votes.js";
 import { stagger, reduced } from "/assets/motion.js";
 
 const fb = feedback($("status"), $("qr"));
@@ -195,6 +200,115 @@ function renderMembers(seats) {
   }));
 }
 
+let shownInvite = null; // the invite code, shown once until dismissed
+let inviteKey = "";
+let inviteListKey = "";
+
+function joinInviteButton(code) {
+  const b = el("button", "Join with this invite", "btn btn-primary", { type: "button" });
+  b.onclick = async () => {
+    b.disabled = true;
+    try {
+      const r = await joinCouncil({ world, fb, invite: code });
+      if (r.ok) {
+        history.replaceState(null, "", "/council.html");
+        shownInvite = null;
+        identity = identities.current();
+        await refresh();
+      }
+    } finally { b.disabled = false; }
+  };
+  return b;
+}
+
+function renderInviteList(invites) {
+  if (!invites.length) return [el("p", "No invites issued by this seat yet.", "cv-empty")];
+  const table = el("table", undefined, "doc-ledger cv-ledger");
+  const head = el("thead"); const hr = el("tr");
+  [["Invite", ""], ["Status", ""], ["Expires", ""], ["Used by", ""]].forEach(([t, c]) => hr.append(el("th", t, c, { scope: "col" })));
+  head.append(hr);
+  const body = el("tbody");
+  for (const inv of invites) {
+    const tr = el("tr");
+    tr.append(el("td", inv.id, "cv-mono"), el("td"), el("td", when(inv.expiresAt)), el("td", inv.usedBy ?? "—"));
+    tr.children[1].append(pill(inv.status === "open" ? "warn" : inv.status === "used" ? "safe" : "danger", inv.status));
+    body.append(tr);
+  }
+  table.append(head, body);
+  return [table];
+}
+
+// Invite section: a seat holder creates a single-use invite (shown once, never logged);
+// a browser that followed an invite link joins with it. Re-renders only when the
+// identity, the shown code or the link changes, so polling never wipes the code box.
+async function renderInvite() {
+  const box = $("inviteBox");
+  const linkCode = qs("invite");
+  const key = JSON.stringify([identity?.seat ?? null, shownInvite?.id ?? null, linkCode ?? null]);
+  if (key !== inviteKey) {
+    inviteKey = key;
+    inviteListKey = "";
+    if (!identity) {
+      box.replaceChildren(
+        el("p", linkCode ? "You were invited to join this council. The invite is single use and expires in 24 hours." : "Only a seat holder can invite. Join the council first, or follow the link a member shared.", "cv-empty"),
+        ...(linkCode ? [joinInviteButton(linkCode)] : []),
+      );
+    } else {
+      const wrap = el("div");
+      const row = el("div", undefined, "cv-identity-row");
+      const btn = el("button", "Create an invite", "btn btn-primary", { type: "button", id: "invite-create" });
+      btn.onclick = async () => {
+        btn.disabled = true;
+        try {
+          const res = await createInvite({ world, identity, fb });
+          if (res.ok) { shownInvite = res.data; inviteKey = ""; await renderInvite(); }
+        } finally { btn.disabled = false; }
+      };
+      row.append(btn, el("span", world.configured ? "A fresh World ID proof is needed for each invite." : "DEMO: the invite is a MOCKED code, single use, 24 hours.", "cv-note"));
+      wrap.append(row);
+      if (shownInvite) {
+        const once = el("div", undefined, "cv-invite-once");
+        const warn = el("p", undefined, "cv-note");
+        warn.append(el("b", "Shown once — copy it now. "), "Anyone with this code can join once, within 24 hours. The code itself is never shown again and never logged.");
+        once.append(warn);
+        const codeRow = el("div", undefined, "cv-keybox");
+        const input = el("input", undefined, "cv-input", { type: "text", readonly: "", value: shownInvite.code, "aria-label": "Invite code" });
+        const copy = el("button", "Copy", "btn", { type: "button" });
+        copy.onclick = async () => {
+          try { await navigator.clipboard.writeText(shownInvite.code); copy.textContent = "Copied"; }
+          catch { input.select(); copy.textContent = "Select the code"; }
+        };
+        const link = el("a", "Open the invite link", "btn", { href: shownInvite.link });
+        const dismiss = el("button", "Done", "btn", { type: "button" });
+        dismiss.onclick = () => { shownInvite = null; inviteKey = ""; renderInvite(); };
+        codeRow.append(input, copy, link, dismiss);
+        once.append(codeRow, el("p", `Invite ${shownInvite.id} · issued by ${shownInvite.by} · expires ${when(shownInvite.expiresAt)}.`, "cv-muted"));
+        wrap.append(once);
+      }
+      if (linkCode) {
+        const banner = el("div", undefined, "cv-invite-banner");
+        banner.append(el("p", "You followed an invite link. Joining with it consumes the invite.", "cv-note"), joinInviteButton(linkCode));
+        wrap.append(banner);
+      }
+      const list = el("div", undefined, "cv-invite-list");
+      list.id = "inviteList";
+      wrap.append(list);
+      box.replaceChildren(wrap);
+    }
+  }
+  if (identity) {
+    const m = await api.member(identity.seat).catch(() => ({ ok: false }));
+    if (m.ok && Array.isArray(m.data.invites)) {
+      const listKey = JSON.stringify(m.data.invites);
+      if (listKey !== inviteListKey) {
+        inviteListKey = listKey;
+        const host = $("inviteList");
+        if (host) host.replaceChildren(...renderInviteList(m.data.invites));
+      }
+    }
+  }
+}
+
 let bar;
 async function refresh() {
   const [v, s, m] = await Promise.all([api.votes(), api.seats(), api.mandate().catch(() => ({ ok: false }))]);
@@ -202,6 +316,7 @@ async function refresh() {
     if (bar.prune(s.data.seats.map((x) => x.seat))) identity = identities.current();
     if (String(s.data.count) !== $("mSeats").textContent) fillChrome();
     renderMembers(s.data.seats);
+    renderInvite();
   }
   if (m.ok) for (const d of m.data.drafts ?? []) drafts.set(d.id, d);
   if (!v.ok) {

@@ -40,6 +40,9 @@ export const api = {
   rpContext: (body) => call("POST", "/world/rp-context", body),
   verifyWorld: (body) => call("POST", "/world/verify", body),
   join: (body) => call("POST", "/council/join", body),
+  // A seat holder issues a single-use invite (24h). Demo: { mocked: true, byNullifier }.
+  // Real: { idkitResult, seat } — a World ID proof under the join action, signal "council-invite:<seat>".
+  invite: (body) => call("POST", "/council/invites", body),
   qrUrl: (data) => `/world/qr.svg?data=${encodeURIComponent(data)}`,
   // Standing instructions and council votes (docs/mandate-spec.md).
   mandate: () => call("GET", "/mandate"),

@@ -21,6 +21,13 @@ The AI never signs and never decides a payment. It turns words into rules a huma
 code applies the rules. Mismatch check, payee registry, x402 check fee, challenge window, re-check at execution,
 seat revocation and fail-closed 0G all keep working as before.
 
+**Audit.** Every decision is a hash-chained HCS entry. `npm run verify` reads the audit log from a Hedera
+mirror node in real mode, never from the server's local log (in simulated mode there is no mirror node, so it
+reads the server log and says so). Decision entries made under an instruction carry its `rulesHash`, checked
+against the `MANDATE_ADOPTED` entry. The audit topic is created with a submit key the agent holds and an admin
+key the council holds (`HEDERA_TOPIC_ADMIN_KEY`, optional): the agent can append but cannot rewrite history.
+With no admin key set, the topic has no admin key at all, so nobody can delete or update it.
+
 **With no active mandate, behaviour is exactly as before** (every existing test keeps passing).
 
 ## Data
@@ -122,6 +129,38 @@ Only seats in `eligible` may vote: 403.
 
 Every ballot is audited: event `VOTE`, detail `council-seat:2 voted yes on P-7 (2 of 2 needed)`.
 
+## Admission (invites)
+
+The first seat founds the council and joins freely. Every later seat needs a single-use invite from a current
+seat holder: `POST /council/invites` (24 h expiry, audit `SEAT_INVITED`), then `POST /council/join { invite }`
+(consumes the code, audit `SEAT_JOINED`). The code is a bearer token: only its public id is ever listed
+(`GET /council/members/:seat` shows each invite's id, status open/used/expired, expiry and used-by). An invite
+for a seat that no longer holds a seat, an expired invite and a reused invite are all refused.
+
+- Demo mode: `{ mocked: true, byNullifier }` issues the invite; the code is shown once in the UI and never logged.
+- World configured: `{ idkitResult, seat }`, a proof under the `join-council` action with signal
+  `council-invite:<seat>` (`src/world.ts` `inviteSignal`). One invite per proof: the proof nonce is consumed
+  (`invite:<nonce>`), so one proof cannot issue two invites.
+- UI (`/council.html`, "Invite a member"): a seat holder creates an invite, sees and copies the code once,
+  and sees their past invites with status. A browser that follows an invite link (`/council.html?invite=<code>`)
+  joins with it. In demo mode "Add a demo member" auto-invites: the demo identity in the browser invites first,
+  then the new member joins with that code in one click, so the demo join keeps working after the first seat.
+
+## One proof, one use (World ID nullifiers)
+
+A World ID nullifier is one-time-use per action: the same person, app and action always produce the same
+nullifier, and each proof can only be verified once for that action. The nullifier store is therefore per
+action, never one global set, or a member who joined could never vote. The design uses that on purpose:
+
+- Join, ballots and removals all prove under the **`join-council`** action, so the same nullifier identifies
+  the seat in each case (`src/world.ts`: "A World ID nullifier is per (person, app, action)").
+- Single use is enforced per proof, not per nullifier: a ballot's signal binds it to the exact subject bytes
+  and the choice, so a ballot cannot be replayed on another subject or flipped to the other choice; a per-payment
+  approval is consumed under the key `<action>:<nullifier>` where the action names the proposal
+  (`council-sign:<proposalId>`); an invite consumes `invite:<nonce>`, one invite per proof.
+- One seat still means one ballot per subject: a second ballot from the same seat is a 409
+  (`src/mandate.ts` `recordBallot`), and a replayed join proof is a 409 because the nullifier already holds a seat.
+
 ## HTTP
 
 All POST routes below use `auth.require` (API key when configured), like the other write routes.
@@ -133,7 +172,9 @@ All POST routes below use `auth.require` (API key when configured), like the oth
 | `POST /mandate/:id/vote` | ballot | `{ recorded: true, vote: VoteTally, mandate: MandateDraft }`. On pass: status adopted, previous active becomes superseded, audit `MANDATE_ADOPTED` with rulesHash and textHash |
 | `POST /proposals/:id/vote` | ballot | `{ recorded: true, vote: VoteTally, outcome: CouncilOutcome }` (outcome is the resolved one when the vote closed) . 409 if the proposal is not PENDING_VOTE |
 | `GET /council/votes` | | `{ open: VoteItem[], closed: VoteItem[] }`, `VoteItem = { subject, kind: "proposal" \| "mandate", title, amountTinybars?, payee?, violations?, vote: VoteTally, decision? }` |
-| `GET /council/members/:seat` | | `{ seat, source, joinedAt, ballots: [{ subject, kind, choice, at }], awaiting: VoteItem[] }` (404 unknown seat). Public: a council's votes are public |
+| `GET /council/members/:seat` | | `{ seat, source, joinedAt, ballots: [{ subject, kind, choice, at }], awaiting: VoteItem[], invites: [{ id, createdAt, expiresAt, status: "open" \| "used" \| "expired", usedBy }] }` (404 unknown seat). Public: a council's votes are public |
+| `POST /council/invites` | `{ mocked: true, byNullifier }` or `{ idkitResult, seat }` | 201 `{ code, id, expiresAt, by, link: "/council.html?invite=<code>" }`. One invite per proof (nonce consumed, 409 on reuse); mocked: the inviter must be a mocked seat (403). Real: unknown seat 404, proof not the seat holder's 403 |
+| `POST /council/join` | `{ mocked: true, nullifier }` or `{ idkitResult }`, plus `invite` after the founder | `{ joined: true, seat }`. Founder needs no invite; later joins consume a single-use invite (403 when no invite, or the invite is invalid, already used, expired, or its issuing seat is gone; 409 when the nullifier already holds a seat) |
 | `POST /world/rp-context` | `{ vote: true, subject, choice }` | `{ action: "join-council", signal: voteSignal(...) }` + rp context, 404 unknown subject |
 
 `GET /proposals` items gain `vote` (VoteTally or null) and `mandate` (`{ id, within, violations }` or null).
@@ -148,8 +189,11 @@ Nav on every page: Atlas, Console, **Instructions** (`/mandate.html`), **Council
   0G request id or a SIMULATED badge, the adoption vote with live tally, the active mandate with its hash and a
   monthly spend bar.
 - `/council.html`: members, open votes (why each needs the council: the violations), animated yes/no tally
-  against `needed`, Vote yes / Vote no (World ID QR, or the demo identity), closed votes. Demo mode: "Act as"
-  picker over this browser's mocked seats, clearly labelled DEMO, so one person can show several voters.
+  against `needed`, Vote yes / Vote no (World ID QR, or the demo identity), closed votes. "Invite a member":
+  a seat holder creates a single-use invite (shown once, with a copy button and the invite link) and sees their
+  past invites with status; a browser that follows an invite link joins with it. Demo mode: "Act as"
+  picker over this browser's mocked seats, clearly labelled DEMO, so one person can show several voters, and
+  "Add a demo member" auto-invites so the demo join works after the first seat.
 - `/member.html?seat=…`: one member's page: seat, joined, ballots cast, votes awaiting them (vote inline).
   Without `?seat`, use this browser's demo identity, or ask to join.
 - Console and report: `PENDING_VOTE` is shown as "Waiting for the council", never as refused, with a link to

@@ -14,7 +14,7 @@
 // only once enough council members have signed.
 
 import { EMPTY_HEAD, isChainedEntry, sealEntry, type ChainedEntry, type ChainHead, type EntryMeta } from "./auditlog.js";
-import { parsePrivateKey } from "./keys.js";
+import { parsePrivateKey, parsePublicKey } from "./keys.js";
 import { fetchTopicMessages, parseMessages } from "./mirror.js";
 import type { Transfer } from "./proposal.js";
 
@@ -26,6 +26,9 @@ export interface HederaConfig {
   privateKey: string;
   topicId: string;
   treasuryAccountId: string;
+  // Public key that administers the HCS audit topic, held by the council (never the agent).
+  // Empty: the topic is created with no admin key, so nobody can delete or update it.
+  topicAdminKey: string;
 }
 
 export function loadHederaConfig(env: NodeJS.ProcessEnv): { config: HederaConfig; mode: HederaMode } {
@@ -37,6 +40,7 @@ export function loadHederaConfig(env: NodeJS.ProcessEnv): { config: HederaConfig
     privateKey,
     topicId: (env.HEDERA_TOPIC_ID ?? "").trim(),
     treasuryAccountId: (env.HEDERA_TREASURY_ACCOUNT_ID ?? "").trim() || accountId,
+    topicAdminKey: (env.HEDERA_TOPIC_ADMIN_KEY ?? "").trim(),
   };
   const mode: HederaMode = accountId && privateKey ? "real" : "simulated";
   return { config, mode };
@@ -204,10 +208,13 @@ export class HederaClient {
     const sdk = await this.getSdk();
     const client = await this.getClient();
     // Only the agent key can append, so the log cannot be polluted or forged by anyone else.
-    const tx = await new sdk.TopicCreateTransaction()
+    // The admin key is the council's (HEDERA_TOPIC_ADMIN_KEY): the agent can write but
+    // cannot rewrite history. Without one the topic has no admin key, so it is immutable.
+    const create = new sdk.TopicCreateTransaction()
       .setTopicMemo(memo.slice(0, 100))
-      .setSubmitKey(parsePrivateKey(this.config.privateKey).publicKey)
-      .execute(client);
+      .setSubmitKey(parsePrivateKey(this.config.privateKey).publicKey);
+    if (this.config.topicAdminKey) create.setAdminKey(parsePublicKey(this.config.topicAdminKey));
+    const tx = await create.execute(client);
     const receipt = await tx.getReceipt(client);
     if (!receipt.topicId) throw new Error("TopicCreateTransaction returned no topic id");
     return receipt.topicId.toString();

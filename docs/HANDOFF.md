@@ -7,17 +7,17 @@ Written 2026-11-06 ~17:00 UTC. Read this first, then `docs/mandate-spec.md` (the
 | What | Where |
 | --- | --- |
 | Working repo (all code is here) | https://github.com/AagastyaPandey/hedera-council-agent |
-| `main` | Verified state, this file included. 148 tests pass, demo 12/12 |
+| `main` | Verified state, this file included. 151 tests pass, demo 12/12 |
 | `hoplite/aspendos-096475b8` | Branch the work was done on; same as `main` after the PR merge |
 | `wip/hardening-round2` | **Partial, unverified** snapshot of the hardening round below (10 files in `src/` + `test/mandate.test.ts`). Do not merge as is |
-| Submission repo | https://github.com/BeastAyyG/hedera-council-agent: **current with AgastyaPandey main through PR #3** (commit 5df9626, synced Nov 6). The agent has no push access; the next sync follows PR #4 |
+| Submission repo | https://github.com/BeastAyyG/hedera-council-agent: **current with AgastyaPandey main through PR #4** (commit 1308d47, synced Nov 6). The agent has no push access; the next sync follows the UI polish round |
 | Fork | https://github.com/BeastAyyG/hedera-council-agent-1 (branch `ui/paper-motion`, older UI work only) |
 
 ## Run it
 
 ```
 npm install
-npm test            # 148 tests
+npm test            # 151 tests
 npm run demo        # ends "Rehearsal: ALL 12 SCENES CORRECT"
 npm run build && npm start   # http://localhost:3000 (PORT to change)
 npm run ready       # submission checklist: no FAIL lines today, TODOs listed
@@ -48,25 +48,32 @@ Backend (`src/`):
 - Hedera: scheduled transfers from a 2-of-2 treasury, mirror-node read-back, HCS hash-chained audit log, evidence bundles, `/audit/verify`, published policy hash.
 - Demo scenes 1-12 (`src/demo.ts`).
 
-Pages (`public/`): Atlas `/`, Console `/console.html` (scroll companion pet), Instructions `/mandate.html`, Council `/council.html` (votes, members, DEMO "Act as" picker), My seat `/member.html`, Report `/report.html`, Verify `/verify.html`. Paper/red design, animations, reduced-motion, 390px responsive.
+Pages (`public/`): Atlas `/`, Console `/console.html` (scroll companion pet), Instructions `/mandate.html`, Council `/council.html` (votes, members, DEMO "Act as" picker, "Invite a member": single-use invite shown once with copy button and link, past invites with status, `?invite=` join, demo "Add a demo member" auto-invites), My seat `/member.html`, Report `/report.html`, Verify `/verify.html`. Paper/red design, animations, reduced-motion, 390px responsive.
 
 Docs: `README.md`, `docs/submission.md`, `docs/demo-script.md` (2:40 script), `docs/judge-qa.md`, `docs/mandate-spec.md`, `docs/world-debrief.md` (has TODOs for real results).
 
-Verified: 148/148 tests, demo 12/12, preflight no FAIL, ready no FAIL, simulated `npm run verify` 0 FAIL, full flow in headless Chrome with 0 console errors.
+Verified: 151/151 tests, demo 12/12, preflight no FAIL, ready no FAIL, simulated `npm run verify` 0 FAIL, full flow in headless Chrome with 0 console errors, invite flow in headless Chrome (founder joins, creates an invite, second member joins via auto-invite, third joins with the invite link, reuse refused, 0 console errors).
 
 **Never verified:** anything against real Hedera, real 0G or real World ID (no credentials were ever provided).
 
 ## Remaining work
 
-### Code (an agent or developer, ~2-3 h). Started on `wip/hardening-round2`, unfinished
+### Hardening items 1-5: DONE
 
-1. **Invites.** Today anyone with World ID can take a seat. After the founder, joining should need a single-use invite from a current seat holder (`POST /council/invites`, `POST /council/join {invite}`, 24 h expiry, audit SEAT_INVITED/SEAT_JOINED). UI: "Invite a member" on `/council.html`, demo "Add a demo member" auto-invites.
-2. **Removal by vote.** Today any one member can remove any other seat. Self-removal stays immediate; removing another seat opens a vote (subject `R-<n>`, target excluded from voters, majority), then applies the existing revocation effects.
-3. **New payee under an instruction.** Today a payee not named in the instruction (registered, e.g. 0.0.1003) goes to a council vote, which is the demo scene 11 path. A truly unregistered payee (for example 0.0.9001) is refused outright by the registry with no vote; revoked/expired payees stay hard refusals. If the post-vote re-check is ever extended to a payee outside the registry, it must accept it only after the vote passes.
-4. **Policy text** (`src/policy.ts`) still says large payments always need World ID; describe instructions, votes, invites, removal votes.
-5. **Audit completeness.** Put `rulesHash` in decision entries made under an instruction and make `npm run verify` check it against MANDATE_ADOPTED; log restart-cancelled votes; log MANDATE_REJECTED when a revocation closes an instruction vote.
+1. **Invites.** Backend: `POST /council/invites`, `POST /council/join {invite}`, 24 h expiry, audit `SEAT_INVITED`/`SEAT_JOINED`, founder joins freely. UI: "Invite a member" on `/council.html` (create, copy once, past invites with status, `?invite=` join); demo "Add a demo member" auto-invites (the demo identity invites first, then the new member joins with that code). Same fix on `/console.html`'s join button.
+2. **Removal by vote.** Self-removal stays immediate; removing another seat opens a vote (subject `R-<n>`, target excluded from voters, majority), then applies the existing revocation effects.
+3. **New payee under an instruction.** Under an active instruction an unregistered payee is a violation that goes to a vote; revoked/expired payees stay hard refusals; the post-vote re-check accepts it. Demo scene 11 uses a truly new payee (0.0.9001).
+4. **Policy text** (`src/policy.ts`) describes instructions, votes, invites and removal votes; large payments no longer always need World ID (an instruction or a council vote stands in).
+5. **Audit completeness.** `rulesHash` is in decision entries made under an instruction and `npm run verify` checks it against `MANDATE_ADOPTED`; restart-cancelled votes are logged (`VOTE_CANCELLED_RESTART`); `MANDATE_REJECTED` is logged when a revocation closes an instruction vote.
 
-After each: `npm test`, `npm run demo` (12/12), browser check of `/council.html`, update `docs/mandate-spec.md`, README limits and `docs/judge-qa.md`.
+Two research findings (GTMMAXING completion guide, batch 2) were checked against this code:
+
+- **World ID nullifiers are one-time-use per action, so the store must be per action, not one global set.** Already true: join, ballots and removals all prove under the `join-council` action so the same nullifier identifies the seat, while single use is enforced per proof (ballot signals bind subject and choice, approvals are consumed per proposal, invites per proof nonce). Documented in `docs/mandate-spec.md` ("One proof, one use") and README limits. No code change was needed.
+- **Audit topic keys and mirror-node verify.** `npm run verify` already reads from a mirror node in real mode, never the local log. The topic had no admin key: added optional `HEDERA_TOPIC_ADMIN_KEY` (`src/hedera.ts` `createTopic`, `src/keys.ts` `parsePublicKey`, `.env.example`). Submit key is the agent's key, admin key is the council's; with no admin key set the topic is created with no admin key and is immutable. Tested in `test/keys.test.ts`.
+
+### Code still open (small)
+
+- UI audit F-03, F-07 to F-16 (see `docs/ui-handoff.md`): dead `theme.css`, palette/stamp/button consolidation, Atlas drift, inline-fork extraction, small items. F-01, F-02, F-04, F-05, F-06 are done.
 
 ### Needs the owner (cannot be done by an agent)
 

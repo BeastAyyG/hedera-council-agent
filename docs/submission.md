@@ -5,7 +5,7 @@ Repo: https://github.com/BeastAyyG/hedera-council-agent
 Deadline: Saturday Nov 7, 09:00 IST, via the Hacker Dashboard (the dashboard time wins if it differs)
 
 ## Short description
-Tell it once. It guards the treasury. An AI agent holds one signing seat on a Hedera treasury council. The owner writes a spending instruction in plain words; 0G compiles it into checkable rules and a World-ID-verified council adopts them by vote. Payments inside the rules co-sign automatically; anything outside goes to a council vote. Every decision is hash-chained on HCS. Built and tested in simulated mode: 148 tests pass, demo 12/12, no real payment settled yet.
+Tell it once. It guards the treasury. An AI agent holds one signing seat on a Hedera treasury council. The owner writes a spending instruction in plain words; 0G compiles it into checkable rules and a World-ID-verified council adopts them by vote. Payments inside the rules co-sign automatically; anything outside goes to a council vote. Every decision is hash-chained on HCS. Built and tested in simulated mode: 151 tests pass, demo 12/12, no real payment settled yet.
 
 ## Long description
 An AI agent with a treasury key is a liability. One bad prompt, one dishonest proposer, one prompt injection, and the money is gone. Making a human approve every payment defeats the point of having an agent. This project sits between the two.
@@ -16,7 +16,7 @@ After that, the agent decides alone. A payment inside the rules is co-signed wit
 
 The AI never signs and never decides a payment. It turns words into rules that humans adopt. Code applies them. Every decision, ballot and adoption is a hash-chained HCS entry anyone can re-check in their browser or with `npm run verify`.
 
-Honest status: everything is written and tested against fakes, 148 tests and 12 demo scenes green. No real Hedera payment has settled, no real 0G call or World ID proof has run, and no credentials were available at build time. The demo is labelled simulated wherever it is simulated, and no simulated id is presented as real.
+Honest status: everything is written and tested against fakes, 151 tests and 12 demo scenes green. No real Hedera payment has settled, no real 0G call or World ID proof has run, and no credentials were available at build time. The demo is labelled simulated wherever it is simulated, and no simulated id is presented as real.
 
 ## Partner prizes to select, exactly 3 partners
 - Hedera: AI Agents That Pay: x402 on Hedera ($6,500), "No Solidity Allowed": Build with Hedera SDKs ($2,000)
