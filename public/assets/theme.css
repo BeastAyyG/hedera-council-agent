@@ -1,4 +1,15 @@
-/* Council Agent: paper-and-red editorial theme.
+/* REFERENCE ONLY — NOT LOADED BY ANY PAGE.
+   This file is the theme spec (tokens, component shapes, motion rules) for
+   the paper-and-red editorial theme. No page links it: the live theme is
+   implemented in public/assets/editorial.css (Atlas / Report / Verify),
+   public/assets/console-original.css + public/assets/app-shell.css
+   (Console / Council / Instructions / My seat), and
+   public/assets/council-pages.css / council-scene.css / motion.css.
+   Do NOT link this file into a page: it contradicts the live pages in
+   three places (body is mono 12px here, Helvetica on live pages; the
+   ticker bottom rule is 3px double here, 1px solid live; the stamp sits
+   at left -40px / bottom -24px here, left 29% / top 63% live) and linking
+   it would restyle every page unpredictably. Edit the live files instead.
    Written fresh for this project from the look in the design reference
    (cream paper, red headline type, tiny mono labels, vertical rail,
    isometric pixel islands). No file from any earlier project is used here,

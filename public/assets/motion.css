@@ -9,7 +9,7 @@
 @keyframes m-wipe { to { clip-path: inset(0 0 0 0); } }
 
 .m-slam { animation: m-slam .6s cubic-bezier(.2,1.6,.35,1) both; animation-delay: var(--d, 0s); }
-@keyframes m-slam { 0% { opacity: 0; transform: rotate(-14deg) scale(2.6); } 55% { opacity: 1; transform: rotate(-3deg) scale(.92); } 78% { transform: rotate(-1deg) scale(1.06); } 100% { opacity: 1; transform: rotate(-1.5deg) scale(1); } }
+@keyframes m-slam { 0% { opacity: 0; transform: rotate(-14deg) scale(2.6); } 55% { opacity: 1; transform: rotate(-3deg) scale(.92); } 78% { transform: rotate(-1deg) scale(1.06); } 100% { opacity: 1; transform: rotate(-6deg) scale(1); } }
 
 .m-shake { animation: m-shake .55s cubic-bezier(.36,.07,.19,.97) both; animation-delay: var(--d, 0s); }
 @keyframes m-shake { 10%, 90% { transform: translateX(-1px); } 20%, 80% { transform: translateX(3px); } 30%, 50%, 70% { transform: translateX(-5px); } 40%, 60% { transform: translateX(5px); } }
@@ -90,7 +90,7 @@
 button,.doc-btn,a[class*="btn"]{transition:transform .15s cubic-bezier(.2,.8,.2,1),box-shadow .15s,border-color .15s,color .15s,background-color .15s}
 button:not(:disabled):hover{transform:translateY(-1px)}
 button:not(:disabled):active{transform:translateY(1px) scale(.985)}
-button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--m-red);outline-offset:3px}
+button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--m-red);outline-offset:2px}
 input:focus,select:focus,textarea:focus{border-color:var(--m-red);box-shadow:0 0 0 3px rgba(226,59,40,.12);transition:border-color .15s,box-shadow .15s}
 details>summary{transition:color .15s,padding-left .2s}
 details>summary:hover{color:var(--m-red);padding-left:4px}

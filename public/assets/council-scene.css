@@ -24,7 +24,7 @@
 .cj-caption{font-size:10px;line-height:1.5;color:#8b857a;letter-spacing:.06em;text-transform:uppercase}
 .cj-replay{display:inline-flex;align-items:center;justify-content:center;gap:10px;flex:none;min-height:40px;padding:8px 10px;border:1px solid var(--pet-hair);border-radius:0;background:transparent;color:var(--pet-ink);font-size:11px;cursor:pointer}
 .cj-replay:hover{border-color:var(--pet-red);color:var(--pet-red)}
-.cj-replay:focus-visible{outline:2px solid var(--pet-red);outline-offset:4px}
+.cj-replay:focus-visible{outline:2px solid var(--pet-red);outline-offset:2px}
 .cj-replay:disabled{opacity:.5;cursor:default}
 .cj-replay span{font-size:18px;line-height:1}
 .cj-field{position:relative;padding-top:54px;margin:0 0 16px}

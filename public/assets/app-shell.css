@@ -6,3 +6,16 @@
 .app-nav a, .app-mobile-nav a { font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .08em; }
 .app-shell .uppercase { text-transform: uppercase; letter-spacing: .08em; }
 .app-mobile-nav a[aria-current="page"] { background: transparent; color: var(--color-accent); box-shadow: inset 0 -2px 0 var(--color-accent); }
+
+/* F-11: the app header is the only glass in the theme (translucent paper
+   over a 12px blur). Flat paper like the rest; sticky behaviour stays. */
+.app-header { background: var(--paper, #f2efe7); backdrop-filter: none; -webkit-backdrop-filter: none; }
+
+/* F-13: the compiled file sets a global :focus-visible outline-offset of 3px.
+   The spec is 2px red outlines everywhere; this override wins (loaded after). */
+:focus-visible { outline-offset: 2px; }
+
+/* F-07: one stamp component. The editorial stamp is 2px solid, mono,
+   uppercase, letter-spacing .14em, rotated -6deg, transparent background.
+   The compiled .doc-stamp (1px border, sans, -1.5deg) is overridden here. */
+.doc-stamp { border-width: 2px; font-family: var(--font-mono); letter-spacing: .14em; transform: rotate(-6deg); }

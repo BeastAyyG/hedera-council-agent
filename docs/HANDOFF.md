@@ -10,7 +10,7 @@ Written 2026-11-06 ~17:00 UTC. Read this first, then `docs/mandate-spec.md` (the
 | `main` | Verified state, this file included. 151 tests pass, demo 12/12 |
 | `hoplite/aspendos-096475b8` | Branch the work was done on; same as `main` after the PR merge |
 | `wip/hardening-round2` | **Partial, unverified** snapshot of the hardening round below (10 files in `src/` + `test/mandate.test.ts`). Do not merge as is |
-| Submission repo | https://github.com/BeastAyyG/hedera-council-agent: **current with AgastyaPandey main through PR #4** (commit 1308d47, synced Nov 6). The agent has no push access; the next sync follows the UI polish round |
+| Submission repo | https://github.com/BeastAyyG/hedera-council-agent: **current with AgastyaPandey main through PR #5** (commit 76676ce, synced Nov 7). The agent has no push access; the next sync follows any further work|
 | Fork | https://github.com/BeastAyyG/hedera-council-agent-1 (branch `ui/paper-motion`, older UI work only) |
 
 ## Run it

@@ -44,7 +44,7 @@ body.cv-page{overflow-x:clip}
 .cv-world-note b{margin-right:6px;color:var(--safe);font:700 10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase}
 .cv-identity-row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px}
 .cv-actas{display:flex;flex-direction:column;gap:6px;min-width:0}
-.cv-identity-row .btn{height:auto;min-height:36px}
+.cv-identity-row .btn{height:auto;min-height:34px}
 
 /* tally */
 .cv-tally{margin-top:6px;padding-top:24px}
@@ -80,10 +80,10 @@ body.cv-page{overflow-x:clip}
 .cv-ballot{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--hair);padding:2px 7px;font:10px/1.5 var(--mono);color:var(--color-dim,#8b857a)}
 .cv-ballot[data-choice="yes"] .cv-mark{color:var(--safe)}.cv-ballot[data-choice="no"] .cv-mark{color:var(--red)}
 .cv-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin-top:14px}
-.cv-actions .btn{height:auto;min-height:36px}
+.cv-actions .btn{height:auto;min-height:34px}
 .cv-note{flex:1 1 180px;font-size:11px;line-height:1.45;color:var(--muted)}
 .cv-card-pet{display:inline-flex}
-.cv-stamp{position:absolute;right:14px;top:44px;border:2px solid currentColor;padding:4px 10px;font:800 15px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--safe);transform:rotate(-6deg);pointer-events:none;background:rgba(242,239,231,.86)}
+.cv-stamp{position:absolute;right:14px;top:44px;border:2px solid currentColor;padding:4px 10px;font:800 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--safe);transform:rotate(-6deg);pointer-events:none;background:transparent}
 .cv-stamp[data-result="failed"]{color:var(--red)}
 .cv-stamp.m-slam{--d:0s}
 .cv-empty{margin:4px 0 0;border:1px dashed var(--hair);padding:16px;font-size:12px;line-height:1.55;color:var(--color-dim,#8b857a)}
@@ -165,7 +165,7 @@ body.cv-page{overflow-x:clip}
   .cv-ledger td:last-child{grid-column:2;grid-row:1;text-align:right}
   .cv-ledger td:not(:first-child):not(:last-child){grid-column:1/-1;font-size:12px;color:var(--color-dim,#8b857a)}
   .cv-ledger .cv-num{text-align:left}
-  .cv-stamp{top:auto;bottom:62px;font-size:13px}
+  .cv-stamp{top:auto;bottom:62px;font-size:12px}
 }
 @media (prefers-reduced-motion:reduce){
   .cv-yes,.cv-no,.cv-spend-fill,.cv-member,.cv-textarea{transition:none}
