@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Council Agent · Atlas</title><link rel="icon" href="data:,">
+<link rel="stylesheet" href="/assets/theme.css">
+</head><body data-page="atlas" data-state="loading">
+<div class="frame">
+  <aside class="vrail"><span>Atlas</span></aside>
+  <div class="stage">
+    <header class="top" id="top"></header>
+    <main>
+      <div class="atlas">
+        <figure style="margin:0">
+          <!-- ATLAS SCENE: one island per proposal, the treasury in the middle. Islands carry data-proposal, data-decision, data-large. -->
+          <svg class="scene" id="scene" viewBox="40 60 720 370" role="img" aria-label="The council treasury and its proposals as islands"></svg>
+          <div class="timeline"><span id="tl-label">0 / 0 signed</span><span class="track"><span class="fill" id="tl-fill"></span></span><span id="tl-right"></span></div>
+          <figcaption class="figcap" style="margin-top:8px">Fig. 01 · the council, generated in code</figcaption>
+        </figure>
+        <section>
+          <h1 class="shout lg">A council is not<br>a signature.<br>It is a check.</h1>
+          <p class="prose">One agent holds one seat on a Hedera treasury council. Every proposal is a transfer plus a description of it. The agent pays for a check, reads the real transfer back from the chain, and signs only when the two agree. Large ones wait for its owner's fresh World ID.</p>
+          <ul class="legend">
+            <li><i class="sq green"></i>Signed</li>
+            <li><i class="sq red"></i>Refused</li>
+            <li><i class="sq ink"></i>Not yet submitted</li>
+            <li><i class="sq blue"></i>Large · World ID gate</li>
+          </ul>
+          <p class="prose" style="margin-top:12px;font-size:9px;color:var(--ink-3)">Click an island to open its report. Submit new proposals in the console.</p>
+        </section>
+      </div>
+    </main>
+    <div class="ticker" id="ticker"></div>
+    <section class="cols4" id="cols"></section>
+  </div>
+</div>
+<script type="module">
+import { api } from "/assets/api.js";
+import { mountRail, mountTicker } from "/assets/rail.js";
+import { el, island, bridge, sky, hashSeed } from "/assets/scene.js";
+
+const [health, list, seats] = await Promise.all([api.health(), api.proposals(), api.seats()]);
+const h = health.data;
+const rows = list.data.proposals ?? [];
+const signed = rows.filter((p) => p.decision === "SIGNED").length;
+const refused = rows.filter((p) => p.decision === "REFUSED").length;
+
+mountRail(document.getElementById("top"), "/", [
+  { label: "Mode", value: `${h.mode} · ${h.network}`, dot: h.mode === "real" ? "green" : "red" },
+  { label: "Signed", value: `${signed} / ${rows.length}`, dot: "red" },
+  { label: "Seats", value: `${seats.data.count} held`, end: true },
+  ...(rows[0] ? [{ report: `/report.html?proposal=${encodeURIComponent(rows[0].id)}` }] : []),
+]);
+
+const svg = document.getElementById("scene");
+svg.append(sky({ width: 800 }));
+const C = [400, 238];
+const n = rows.length;
+const spots = rows.map((_, i) => {
+  const a = (-150 + (360 / Math.max(n, 1)) * i) * (Math.PI / 180);
+  return [C[0] + Math.cos(a) * 285, C[1] + Math.sin(a) * 135];
+});
+const bridges = el("g"); svg.append(bridges);
+spots.forEach((s, i) => bridges.append(bridge(C, s, { id: rows[i].id })));
+const treasury = el("g", { class: "island", "data-treasury": "true" }, [island({ cx: C[0], cy: C[1], cols: 14, rows: 10, seed: 11, accent: "#df3d2a" })]);
+const tl = el("text", { class: "island-label", x: C[0], y: C[1] + 62, "text-anchor": "middle" }); tl.textContent = "Treasury";
+treasury.append(tl); svg.append(treasury);
+rows.forEach((p, i) => {
+  const [x, y] = spots[i];
+  const accent = p.decision === "SIGNED" ? "#3f9b45" : p.decision === "REFUSED" ? "#df3d2a" : "#9b978b";
+  const size = p.large ? [10, 8] : [8, 6];
+  const a = el("a", { href: `/report.html?proposal=${encodeURIComponent(p.id)}`, class: "island", "data-proposal": p.id, "data-decision": p.decision ?? "PENDING", "data-large": String(p.large) }, [
+    island({ cx: x, cy: y, cols: size[0], rows: size[1], seed: hashSeed(p.id), accent }),
+  ]);
+  const t = el("text", { class: "island-label", x, y: y + 44, "text-anchor": "middle" }); t.textContent = `${p.id}${p.large ? " · large" : ""}`;
+  a.append(t);
+  if (p.large) a.append(el("rect", { x: x - 3, y: y - 46, width: 6, height: 6, fill: "#6fb0d6" }));
+  svg.append(a);
+});
+if (!n) {
+  const t = el("text", { class: "island-label", x: 400, y: 330, "text-anchor": "middle" }); t.textContent = "No proposals yet · open the console to submit one";
+  svg.append(t);
+}
+
+document.getElementById("tl-label").textContent = `${signed} / ${rows.length} signed`;
+document.getElementById("tl-right").textContent = `${refused} refused`;
+document.getElementById("tl-fill").style.width = rows.length ? `${(signed / rows.length) * 100}%` : "0";
+
+mountTicker(document.getElementById("ticker"), [
+  `Mode ${h.mode}`, `Network ${h.network}`, `x402 ${h.x402Buyer.startsWith("real") ? "real" : "simulated"}`, `Check price ${h.checkPrice}`,
+  `0G ${h.zeroG}`, `World ${h.world.startsWith("real") ? "real" : "mocked"}`, `Seats ${seats.data.count}`, `${rows.length} proposals`,
+]);
+
+const col = (title, lines) => { const d = document.createElement("div"); const l = document.createElement("span"); l.className = "label"; l.textContent = title; const p = document.createElement("p"); p.textContent = lines.join("\n"); p.style.whiteSpace = "pre-line"; d.append(l, p); return d; };
+document.getElementById("cols").replaceChildren(
+  col("Council", [`Proposals ${rows.length}`, `Signed ${signed}`, `Refused ${refused}`, `Seats ${seats.data.count}`]),
+  col("Traffic", [`Check price ${h.checkPrice}`, `Spend cap left ${h.spendCapRemaining}`, `Buyer ${h.x402Buyer}`]),
+  col("Rails", [`HCS ${h.hcsTopic}`, `Treasury ${h.treasury}`, `0G ${h.zeroG}`, `World ${h.world}`]),
+  col("Note", [h.note]),
+);
+document.body.dataset.state = "ready";
+</script>
+</body></html>

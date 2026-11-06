@@ -1,0 +1,613 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="icon" href="data:," />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="Re-check the Council Agent decision log in your own browser, straight from a Hedera mirror node." />
+<meta name="color-scheme" content="light" />
+<meta name="theme-color" content="#f2efe7" />
+<title>Council Agent — Verify log</title>
+<link rel="stylesheet" href="/assets/original.css" />
+<link rel="stylesheet" href="/assets/motion.css" />
+<link rel="stylesheet" href="/assets/council-scene.css" />
+<style>
+  .vmain{flex:1;min-width:0;padding:44px 0 20px;max-width:980px;width:100%;}
+  .v-intro{animation:v-enter .55s cubic-bezier(.2,.8,.2,1) both;animation-delay:var(--intro-delay,0s);}
+  h1{font-size:clamp(34px,5vw,64px);line-height:.95;letter-spacing:-.04em;margin:10px 0 14px;}
+  .lede{max-width:56ch;font-size:14px;line-height:1.55;margin:0 0 26px;}
+  .form{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;margin-bottom:12px;}
+  .form label{display:block;min-width:0;}
+  .form .topic-field{flex:1 1 190px;max-width:260px;}
+  .form select,.form input{
+    display:block;margin-top:6px;height:40px;padding:0 10px;background:#fff;color:var(--ink);
+    border:1px solid var(--hair);border-radius:0;max-width:100%;
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:13px;}
+  .form input{width:100%;}
+  .form button{
+    height:40px;padding:0 22px;border:1px solid var(--ink);background:var(--ink);color:var(--paper);
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:10.5px;
+    letter-spacing:.15em;text-transform:uppercase;cursor:pointer;}
+  .form button:hover{background:var(--red);border-color:var(--red);}
+  .form button:disabled{opacity:.5;cursor:wait;}
+  .form button.secondary{background:transparent;color:var(--ink);border-color:var(--hair);}
+  .form button.secondary:hover{background:var(--ink);color:var(--paper);border-color:var(--ink);}
+  .form button[hidden]{display:none;}
+  .note{font-size:12px;color:var(--muted);margin:0 0 24px;max-width:62ch;line-height:1.5;}
+  .status{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:11px;line-height:1.5;min-height:18px;margin:0 0 10px;color:var(--muted);}
+  .receipt-scene{margin:0 0 20px;padding:16px 0 12px;border-top:1px solid var(--ink);border-bottom:1px solid var(--hair);min-width:0;}
+  .scene-heading{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 20px;}
+  .scene-heading h2{font-size:20px;letter-spacing:-.025em;line-height:1.15;margin:0;}
+  .scene-heading .label{overflow-wrap:anywhere;color:#686357;}
+  .scene-note{max-width:65ch;font-size:12px;line-height:1.5;margin:8px 0 0;}
+  .receipt-stage{position:relative;padding-top:58px;min-width:0;}
+  .receipt-track{display:grid;grid-template-columns:repeat(var(--slots,3),minmax(0,1fr));list-style:none;padding:0;margin:0;}
+  .receipt{position:relative;min-width:0;min-height:68px;margin:0 6px;padding:10px 6px;border:1px dashed var(--hair);text-align:center;background:var(--paper);}
+  .receipt::before{content:"";position:absolute;top:50%;right:100%;width:13px;border-top:1px dashed var(--hair);}
+  .receipt:first-child::before{display:none;}
+  .receipt-number,.receipt-state{display:block;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;overflow-wrap:anywhere;}
+  .receipt-number{font-size:11px;font-weight:700;line-height:1.35;}
+  .receipt-state{font-size:9px;margin-top:6px;line-height:1.4;color:#686357;}
+  .receipt[data-state="genesis"]{border-style:solid;}
+  .receipt[data-state="checking"]{border-color:var(--red);}
+  .receipt[data-state="valid"]{border:1px solid var(--ink);background:rgba(216,211,198,.4);}
+  .receipt[data-state="valid"]::before{border-top:2px solid var(--ink);}
+  .receipt[data-state="valid"] .receipt-state{color:var(--ink);}
+  .receipt[data-state="invalid"],.receipt[data-state="error"]{border:2px solid var(--red);background:rgba(226,59,40,.07);}
+  .receipt[data-state="invalid"]::before{border-top:2px solid var(--red);}
+  .receipt[data-state="invalid"] .receipt-state,.receipt[data-state="error"] .receipt-state{color:var(--red);font-weight:700;}
+  .receipt[data-current="true"]::after{content:"";position:absolute;top:-6px;left:calc(50% - 3px);width:6px;height:6px;background:var(--ink);}
+  .receipt-scene[data-state="invalid"] .receipt[data-current="true"]::after,.receipt-scene[data-state="error"] .receipt[data-current="true"]::after{background:var(--red);}
+  .courier-travel{position:absolute;top:5px;left:var(--courier-x,16.667%);width:48px;height:48px;transform:translateX(-50%);pointer-events:none;}
+  .courier-travel .council-pet{display:block;width:48px;height:48px;--pet-safe:var(--ink);}
+  .receipt-scene[data-motion="false"] .council-pet *,.receipt-scene .council-pet[data-pose="signed"] .pet-body{animation:none;}
+  .receipt-scene[data-motion="true"] .courier-travel{transition:left var(--step-ms,220ms) ease-out;}
+  .scene-state{font-size:12px;line-height:1.5;font-weight:700;margin:12px 0 4px;overflow-wrap:anywhere;}
+  .scene-window,.scene-key{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:10px;line-height:1.5;margin:4px 0;color:var(--muted);}
+  .scene-key{display:flex;flex-wrap:wrap;gap:4px 18px;}
+  .scene-key span::before{content:"";display:inline-block;vertical-align:middle;width:14px;margin-right:6px;border-top:2px solid var(--ink);}
+  .scene-key .key-broken::before{border-color:var(--red);}
+  .scene-key .key-pending::before{border-top:1px dashed var(--muted);}
+  .verdict{position:relative;margin:12px 0 24px;padding:18px 20px 19px;border-top:1px solid var(--ink);border-bottom:1px solid var(--hair);border-left:4px solid var(--ink);}
+  .verdict[hidden]{display:none;}
+  .verdict[data-tone="bad"]{border-left-color:var(--red);background:rgba(226,59,40,.055);}
+  .verdict h2{font-size:clamp(25px,3.4vw,42px);line-height:1;letter-spacing:-.035em;margin:8px 0 10px;}
+  .verdict[data-tone="bad"] h2{color:var(--red);}
+  .verdict p{max-width:65ch;margin:0;font-size:13px;line-height:1.55;overflow-wrap:anywhere;}
+  .verdict.is-landing{animation:v-verdict .5s cubic-bezier(.2,.8,.2,1) both;}
+  .rows{list-style:none;margin:0;padding:0;border-top:1px solid var(--hair);}
+  .row{
+    position:relative;display:grid;grid-template-columns:68px minmax(0,1fr) minmax(140px,.6fr) 88px;
+    column-gap:16px;row-gap:8px;align-items:start;padding:15px 0;border-bottom:1px solid var(--hair);
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12px;}
+  .row.is-entering{animation:v-enter .45s cubic-bezier(.2,.8,.2,1) both;animation-delay:var(--row-delay,0ms);}
+  .entry-marker{grid-column:1;grid-row:1 / span 2;position:relative;display:flex;align-items:center;gap:12px;min-height:18px;color:var(--muted);font-size:10px;}
+  .entry-marker::before{content:"";position:absolute;left:4px;top:22px;bottom:-28px;width:1px;background:var(--hair);}
+  .row:last-child .entry-marker::before{display:none;}
+  .pip{position:relative;z-index:1;width:9px;height:9px;flex:0 0 auto;border:1px solid var(--muted);border-radius:50%;background:var(--paper);transition:background-color .2s,border-color .2s;}
+  .entry-main{grid-column:2;grid-row:1;min-width:0;}
+  .entry-event{display:block;color:var(--ink);font-weight:700;line-height:1.35;overflow-wrap:anywhere;}
+  .entry-pid{display:block;margin-top:4px;color:var(--muted);font-size:10px;line-height:1.4;overflow-wrap:anywhere;}
+  .hash-detail{grid-column:3;grid-row:1;min-width:0;font-size:10px;}
+  .hash-detail summary{display:flex;justify-content:flex-end;cursor:pointer;color:var(--muted);list-style-position:inside;}
+  .hash-detail summary::marker{color:var(--hair);}
+  .hash-detail summary code{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .hash-detail[open]{grid-column:2 / -1;grid-row:2;}
+  .hash-detail[open] summary{justify-content:flex-start;margin-bottom:7px;}
+  .hash-caption{display:block;margin:7px 0 3px;color:var(--muted);}
+  .full-hash{display:block;padding:9px 10px;background:rgba(216,211,198,.28);color:var(--ink);font-size:10px;line-height:1.55;white-space:normal;overflow-wrap:anywhere;user-select:all;}
+  .entry-state{grid-column:4;grid-row:1;justify-self:end;padding-top:1px;color:var(--muted);font-size:9px;letter-spacing:.09em;text-transform:uppercase;white-space:nowrap;}
+  .row[data-state="checking"] .pip{border-color:var(--red);animation:v-pulse .8s ease-in-out infinite alternate;}
+  .row[data-state="checking"] .entry-state{color:var(--red);}
+  .row[data-state="valid"] .pip{background:var(--ink);border-color:var(--ink);}
+  .row[data-state="valid"] .entry-state{color:var(--ink);font-weight:700;}
+  .row[data-state="invalid"]{background:rgba(226,59,40,.07);}
+  .row[data-state="invalid"] .pip{background:var(--red);border-color:var(--red);}
+  .row[data-state="invalid"] .entry-state{color:var(--red);font-weight:700;}
+  .row[data-state="skipped"] .pip{border-color:var(--hair);}
+  .row[data-state="error"] .pip{border-color:var(--red);}
+  .row[data-state="error"] .entry-state{color:var(--red);}
+  .entry-marker>span:last-child{min-width:0;overflow-wrap:anywhere;}
+  .summary{margin-top:22px;font-size:12px;line-height:1.6;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;}
+  .summary[hidden]{display:none;}
+  .summary-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;margin-bottom:14px;}
+  .summary-actions a{color:var(--ink);text-underline-offset:3px;}
+  .summary-actions a:hover{color:var(--red);}
+  .metadata{border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);padding:10px 0;}
+  .metadata>summary{cursor:pointer;color:var(--muted);font-size:10px;letter-spacing:.1em;text-transform:uppercase;}
+  .metadata dl{display:grid;grid-template-columns:minmax(110px,.35fr) minmax(0,1fr);gap:8px 18px;margin:18px 0;}
+  .metadata dt{color:var(--muted);}
+  .metadata dd{margin:0;overflow-wrap:anywhere;user-select:text;}
+  .raw-json{max-height:320px;overflow:auto;margin:0 0 12px;padding:12px;background:rgba(216,211,198,.25);font-size:10px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;}
+  .topbar a:focus-visible,.vmain :focus-visible{outline:2px solid var(--red);outline-offset:4px;}
+  @keyframes v-enter{from{opacity:0;transform:translateY(9px);}to{opacity:1;transform:none;}}
+  @keyframes v-verdict{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+  @keyframes v-pulse{from{background:var(--paper);}to{background:var(--red);}}
+  @media (max-width:760px){
+    .sheet{padding:24px 18px 20px 60px;}
+    .topbar{grid-template-columns:minmax(0,1fr) minmax(0,1fr);}
+    .topval{overflow-wrap:anywhere;}
+    .row{grid-template-columns:52px minmax(0,1fr) 76px;column-gap:10px;padding:14px 0;}
+    .entry-marker{grid-column:1;grid-row:1 / span 2;gap:8px;}
+    .entry-main{grid-column:2;grid-row:1;}
+    .entry-state{grid-column:3;grid-row:1;}
+    .hash-detail{grid-column:2;grid-row:2;}
+    .hash-detail summary{justify-content:flex-start;}
+    .hash-detail[open]{grid-column:2 / -1;grid-row:2;}
+  }
+  @media (max-width:480px){
+    .vmain{padding-top:30px;}
+    .form{gap:12px;}
+    .form .topic-field{max-width:none;flex-basis:100%;}
+    .form button{width:100%;}
+    .verdict{padding:16px 14px 17px;}
+    .row{grid-template-columns:44px minmax(0,1fr);column-gap:9px;}
+    .entry-marker{grid-column:1;grid-row:1 / span 3;gap:6px;}
+    .entry-main{grid-column:2;grid-row:1;padding-right:68px;}
+    .entry-state{grid-column:2;grid-row:1;}
+    .hash-detail{grid-column:2;grid-row:2;padding-right:0;}
+    .hash-detail[open]{grid-column:2;grid-row:2;}
+    .metadata dl{grid-template-columns:1fr;gap:4px;}
+    .metadata dd{margin-bottom:10px;}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .v-intro,.row.is-entering,.verdict.is-landing{animation:none !important;opacity:1 !important;transform:none !important;}
+    .row[data-state="checking"] .pip{animation:none !important;}
+    .pip,.receipt-scene .courier-travel{transition:none !important;}
+  }
+</style>
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+
+<div class="sheet">
+  <div class="rail">
+    <div class="wordmark">COUNCIL</div>
+    <div class="rail-rule"></div>
+    <div class="rail-meta">Agent&nbsp;·&nbsp;Verify</div>
+  </div>
+
+  <div class="rail-r" aria-hidden="true">
+    <div class="dot"></div>
+    <div class="est">Mumbai&nbsp;2026</div>
+  </div>
+
+  <header class="topbar">
+    <div class="menu">
+      <div class="label menu-title">Menu</div>
+      <a href="/">Atlas</a>
+      <a href="/console.html">Console</a>
+      <a href="/report.html">Report</a>
+      <a href="/policy">Policy</a>
+      <a href="/verify.html" aria-current="page">Verify log</a>
+    </div>
+    <div>
+      <div class="label">Network</div>
+      <p class="topval" id="tNet">&mdash;</p>
+    </div>
+    <div>
+      <div class="label">Checked</div>
+      <p class="topval" id="tCount">0</p>
+    </div>
+    <div class="right">
+      <div class="label">Result</div>
+      <p class="topval"><span class="live"></span><span id="tResult">Idle</span></p>
+    </div>
+  </header>
+
+  <main class="vmain">
+    <div class="label v-intro">Public audit</div>
+    <h1 class="v-intro" style="--intro-delay:.06s">Verify the log yourself.</h1>
+    <p class="lede v-intro" style="--intro-delay:.12s">Read a Hedera topic from a mirror node. Re-check every receipt and its hash links in your browser.</p>
+
+    <form class="form v-intro" id="form" autocomplete="off" style="--intro-delay:.18s">
+      <label><span class="label">Network</span>
+        <select id="network"><option value="testnet">testnet</option><option value="mainnet">mainnet</option></select>
+      </label>
+      <label class="topic-field"><span class="label">Topic id</span>
+        <input id="topic" placeholder="0.0.1234" spellcheck="false" required aria-describedby="note" />
+      </label>
+      <button type="submit" id="go">Verify</button>
+      <button type="button" id="demo" class="secondary" hidden>Load simulated log</button>
+    </form>
+    <p class="note v-intro" id="note" style="--intro-delay:.24s">Verify fetches the topic afresh. The simulated log, when available, comes from this agent instead.</p>
+
+    <section class="receipt-scene" id="receiptScene" data-state="idle" data-motion="false" aria-labelledby="sceneTitle">
+      <div class="scene-heading">
+        <h2 id="sceneTitle">Follow the hash links.</h2>
+        <span class="label" id="sceneSource">Awaiting a source</span>
+      </div>
+      <p class="scene-note">Each receipt carries the previous receipt&rsquo;s hash. A changed or missing link stops the check.</p>
+      <div class="receipt-stage" id="receiptStage">
+        <div class="courier-travel"><div class="council-pet" id="courier" data-pose="idle" aria-hidden="true"></div></div>
+        <ol class="receipt-track" id="receiptTrack" aria-label="Visible hash links">
+          <li class="receipt" data-state="genesis"><span class="receipt-number">Genesis</span><span class="receipt-state">Start</span></li>
+          <li class="receipt" data-state="pending"><span class="receipt-number">Receipt</span><span class="receipt-state">Awaiting log</span></li>
+          <li class="receipt" data-state="pending"><span class="receipt-number">Next receipt</span><span class="receipt-state">Awaiting log</span></li>
+        </ol>
+      </div>
+      <p class="scene-state" id="sceneState">No log loaded. No receipts checked.</p>
+      <p class="scene-window" id="sceneWindow">The courier moves only after a check returns. Full hashes stay in the entries below.</p>
+      <p class="scene-key"><span>Verified link</span><span class="key-broken">Broken link</span><span class="key-pending">Not checked</span></p>
+    </section>
+    <p class="status" id="status" role="status" aria-live="polite">Enter a topic ID, then select Verify.</p>
+    <section class="verdict" id="verdict" aria-live="polite" aria-atomic="true" hidden>
+      <div class="label" id="verdictLabel">Verification result</div>
+      <h2 id="verdictTitle"></h2>
+      <p id="verdictDetail"></p>
+    </section>
+    <ol class="rows" id="rows" aria-label="Chain entries"></ol>
+    <section class="summary" id="summary" aria-label="Verification evidence" hidden></section>
+  </main>
+</div>
+
+<script type="module">
+import { fetchTopic, isChainedEntry, checkEntry, GENESIS } from "/assets/chain-verify.js";
+import { reduced, sleep } from "/assets/motion.js";
+import { agentMarkup } from "/assets/council-scene.js";
+
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const LINK_TRAVEL_MS = 220;
+const MAX_TRAVEL_BUDGET_MS = 1800;
+const MAX_ANIMATED_LINKS = 24;
+const STATE_LABELS = { pending: "Pending", checking: "Checking", valid: "Valid", invalid: "Invalid", skipped: "Not checked", error: "Check error" };
+const shortHash = (hash) => hash && hash.length > 18 ? `${hash.slice(0, 10)}…${hash.slice(-8)}` : (hash || "—");
+const entrySetKey = (entries) => JSON.stringify(entries);
+const compactTrack = matchMedia("(max-width:480px)");
+let running = false;
+let activeRun = 0;
+let lastEntrySetKey = null;
+let receiptView = { entries: [], rows: [], current: -1, validCount: 0, ignored: 0, animate: false };
+const isCurrent = (run) => run === activeRun;
+
+// The shared SVG is decorative; all results also appear as native text.
+$("courier").innerHTML = agentMarkup();
+
+function node(tag, className, text) {
+  const el = document.createElement(tag);
+  if (className) el.className = className;
+  if (text !== undefined) el.textContent = text;
+  return el;
+}
+
+// A ?mirror= override is honoured only for a local stub, never a remote host.
+function mirrorOverride() {
+  const raw = params.get("mirror");
+  if (!raw) return undefined;
+  try {
+    const url = new URL(raw);
+    if (url.protocol === "http:" && (url.hostname === "127.0.0.1" || url.hostname === "localhost")) return url.origin;
+  } catch {}
+  return undefined;
+}
+
+function setStatus(text) {
+  $("status").textContent = text;
+}
+
+function setRunning(value) {
+  running = value;
+  $("go").disabled = value;
+  $("demo").disabled = value;
+  $("network").disabled = value;
+  $("topic").disabled = value;
+}
+
+function setRowState(li, state) {
+  li.dataset.state = state;
+  li.querySelector(".state-text").textContent = STATE_LABELS[state];
+}
+
+function setSceneState(state, text, pose) {
+  $("receiptScene").dataset.state = state;
+  $("sceneState").textContent = text;
+  $("courier").dataset.pose = pose;
+}
+
+function makeReceipt(label, state, text, current = false) {
+  const receipt = node("li", "receipt");
+  receipt.dataset.state = state;
+  receipt.dataset.current = String(current);
+  receipt.append(node("span", "receipt-number", label), node("span", "receipt-state", text));
+  if (current) receipt.setAttribute("aria-current", "step");
+  return receipt;
+}
+
+function renderTrack() {
+  const { entries, rows, current, animate } = receiptView;
+  const track = $("receiptTrack");
+  if (!entries.length) {
+    $("receiptScene").dataset.motion = "false";
+    $("receiptStage").style.setProperty("--slots", "3");
+    $("receiptStage").style.setProperty("--courier-x", "16.667%");
+    track.dataset.start = "0";
+    track.replaceChildren(makeReceipt("Genesis", "genesis", "Start"), makeReceipt("Receipt", "pending", "Awaiting log"), makeReceipt("Next receipt", "pending", "Awaiting log"));
+    $("sceneWindow").textContent = "The courier moves only after a check returns. Full hashes stay in the entries below.";
+    return;
+  }
+  // Include genesis as position zero; reuse at most five visible receipt cells.
+  const slots = Math.min(compactTrack.matches ? 3 : 5, entries.length + 1);
+  const start = Math.max(0, Math.min(current + 1 - Math.floor(slots / 2), entries.length + 1 - slots));
+  $("receiptScene").dataset.motion = String(animate && !reduced() && track.dataset.start === String(start));
+  track.dataset.start = String(start);
+  const cells = Array.from({ length: slots }, (_, slot) => {
+    const index = start + slot - 1;
+    if (index < 0) return makeReceipt("Genesis", "genesis", "Start", current === -1);
+    const state = rows[index].dataset.state;
+    return makeReceipt(`#${entries[index].seq}`, state, STATE_LABELS[state], index === current);
+  });
+  track.replaceChildren(...cells);
+  $("receiptStage").style.setProperty("--slots", String(slots));
+  $("receiptStage").style.setProperty("--courier-x", `${((current + 1 - start + .5) / slots) * 100}%`);
+  $("sceneWindow").textContent = `Showing receipts ${Math.max(1, start)}–${start + slots - 1} of ${entries.length}${start === 0 ? " + genesis" : ""}. All entries and exact hashes below.`;
+}
+
+function makeRow(entry, index, animate) {
+  const li = node("li", "row");
+  li.dataset.state = "pending";
+  if (animate && index < 12) {
+    li.classList.add("is-entering");
+    li.style.setProperty("--row-delay", `${Math.min(index, 12) * 45}ms`);
+  }
+  const marker = node("div", "entry-marker");
+  marker.append(node("span", "pip"), node("span", "", String(entry.seq).padStart(3, "0")));
+  marker.querySelector(".pip").setAttribute("aria-hidden", "true");
+  const main = node("div", "entry-main");
+  main.append(node("span", "entry-event", entry.event), node("span", "entry-pid", entry.proposalId));
+  const disclosure = node("details", "hash-detail");
+  const summary = node("summary");
+  summary.title = `Show full hash for entry ${entry.seq}`;
+  summary.append(node("code", "", shortHash(entry.hash)));
+  summary.setAttribute("aria-label", `Show full hashes for entry ${entry.seq}`);
+  disclosure.append(summary, node("span", "hash-caption", "This receipt’s hash"), node("code", "full-hash", entry.hash), node("span", "hash-caption", "Previous receipt’s hash"), node("code", "full-hash", entry.prev));
+  const state = node("div", "entry-state");
+  state.append(node("span", "state-text", STATE_LABELS.pending));
+  li.append(marker, main, disclosure, state);
+  return li;
+}
+
+function showVerdict(tone, title, detail, animate = false) {
+  const verdict = $("verdict");
+  verdict.dataset.tone = tone;
+  $("verdictTitle").textContent = title;
+  $("verdictDetail").textContent = detail;
+  verdict.classList.toggle("is-landing", animate && !reduced());
+  verdict.hidden = false;
+  setStatus("");
+}
+
+function metadataLine(parent, label, value) {
+  parent.append(node("dt", "", label), node("dd", "", value));
+}
+
+function summaryLink(href, text, external = false) {
+  const link = node("a", "", text);
+  link.href = href;
+  if (external) {
+    link.target = "_blank";
+    link.rel = "noopener";
+  }
+  return link;
+}
+
+function showSummary(entries, topic, network, ignored, head, headLabel = "Chain head", simulated = false) {
+  const container = $("summary");
+  container.replaceChildren();
+  const actions = node("div", "summary-actions");
+  actions.append(node("span", "label", simulated ? "Evidence" : "Cross-check"), summaryLink("/policy", "Published policy"));
+  if (simulated) {
+    actions.append(summaryLink("/audit", "Simulated log JSON"));
+  } else {
+    actions.append(summaryLink(`https://hashscan.io/${network}/topic/${encodeURIComponent(topic)}`, "HashScan ↗", true));
+  }
+  const details = node("details", "metadata");
+  details.append(node("summary", "", simulated ? "Simulated log & raw JSON" : "Topic & raw JSON"));
+  const metadata = node("dl");
+  metadataLine(metadata, "Network", simulated ? "SIMULATED · no mirror read" : network);
+  metadataLine(metadata, "Topic", topic);
+  if (simulated) metadataLine(metadata, "Source", "SIMULATED · served by this agent, not a mirror node");
+  const policies = [...new Set(entries.map((entry) => entry.policy))];
+  if (policies.length) metadataLine(metadata, policies.length > 1 ? "Policy hashes" : "Policy hash", policies.join(", "));
+  if (head) metadataLine(metadata, headLabel, `seq ${head.seq}, ${head.hash}`);
+  if (ignored) metadataLine(metadata, "Ignored messages", `${ignored} non-chain messages in this ${simulated ? "simulated log" : "topic"}`);
+  details.append(metadata, node("pre", "raw-json", JSON.stringify(entries, null, 2)));
+  container.append(actions, details);
+  container.hidden = false;
+}
+
+function resetResult() {
+  $("rows").replaceChildren();
+  $("summary").replaceChildren();
+  $("summary").hidden = true;
+  $("verdict").hidden = true;
+  $("verdict").classList.remove("is-landing");
+  $("tCount").textContent = "0";
+  $("tResult").textContent = "Idle";
+  $("sceneSource").textContent = "Awaiting a source";
+  receiptView = { entries: [], rows: [], current: -1, validCount: 0, ignored: 0, animate: false };
+  renderTrack();
+  setSceneState("idle", "No log loaded. No receipts checked.", "idle");
+}
+
+function beginRun(network, topic, simulated) {
+  const run = ++activeRun;
+  setRunning(true);
+  resetResult();
+  $("tNet").textContent = simulated ? "Simulated" : network;
+  $("tResult").textContent = "Reading";
+  $("sceneSource").textContent = simulated ? "SIMULATED · agent /audit" : `${network} · ${topic}`;
+  $("verdictLabel").textContent = simulated ? "Simulated log result" : "Mirror topic result";
+  const text = simulated ? "Reading the SIMULATED log served by this agent…" : "Reading the topic from the mirror node…";
+  setSceneState("reading", "Waiting for the log. No receipts checked yet.", "wait");
+  setStatus(text);
+  return run;
+}
+
+async function checkReceipts(entries, lis, run, stepMs) {
+  let head = { seq: 0, hash: GENESIS };
+  let validCount = 0;
+  for (let index = 0; index < entries.length; index += 1) {
+    if (!isCurrent(run)) return null;
+    const entry = entries[index];
+    setRowState(lis[index], "checking");
+    renderTrack();
+    setSceneState("checking", `Checking receipt ${entry.seq}. ${validCount} of ${entries.length} verified.`, "working");
+    setStatus(`Checking entry ${index + 1} of ${entries.length}: re-computing its hash and previous link…`);
+    const reason = await checkEntry(entry, head);
+    if (!isCurrent(run)) return null;
+    $("tCount").textContent = String(index + 1);
+    if (reason) {
+      setRowState(lis[index], "invalid");
+      lis.slice(index + 1).forEach((li) => setRowState(li, "skipped"));
+      receiptView = { ...receiptView, current: index, validCount };
+      renderTrack();
+      setSceneState("invalid", `Stopped at receipt ${entry.seq}: broken link. ${validCount} verified; ${entries.length - index - 1} later receipts not checked.`, "refused");
+      return { head, validCount, reason, brokenAt: entry.seq };
+    }
+    // Neither the courier nor a verified link advances before checkEntry resolves.
+    setRowState(lis[index], "valid");
+    head = { seq: entry.seq, hash: entry.hash };
+    validCount += 1;
+    receiptView = { ...receiptView, current: index, validCount };
+    renderTrack();
+    setSceneState("checking", `${validCount} of ${entries.length} receipts verified.`, receiptView.animate && !reduced() ? "walk" : "working");
+    if (stepMs && !reduced() && index < entries.length - 1) await sleep(stepMs);
+  }
+  return isCurrent(run) ? { head, validCount, reason: null } : null;
+}
+
+function showEmptyLog(messages, topic, network, ignored, simulated) {
+  $("tResult").textContent = "No entries";
+  setSceneState("empty", "No chain receipts found. Nothing was verified.", "wait");
+  const detail = simulated
+    ? `The simulated log has ${messages.length} messages but no Council Agent v1 chain entries. Start a proposal on the atlas or console, then load the simulated log again. Source: this agent’s /audit, not a mirror node.`
+    : `This topic has ${messages.length} messages but no Council Agent v1 chain entries. Check the network and topic ID, then try again.`;
+  showVerdict("bad", "No chain entries found.", detail);
+  showSummary([], topic, network, ignored, null, "Chain head", simulated);
+}
+
+async function verifyTopic(network, topic, run, simulatedMessages = null) {
+  const simulated = simulatedMessages !== null;
+  const messages = simulated ? simulatedMessages : await fetchTopic(network, topic, {
+    baseUrl: mirrorOverride(),
+    onPage: (count) => { if (isCurrent(run)) setStatus(`Read ${count} messages from the mirror node…`); },
+  });
+  if (!isCurrent(run)) return;
+  const sourceNote = simulated ? " Source: SIMULATED log served by this agent, not a mirror node." : "";
+  const entries = messages.filter(isChainedEntry);
+  const ignored = messages.length - entries.length;
+  const key = entrySetKey(entries);
+  const animate = key !== lastEntrySetKey && !reduced();
+  lastEntrySetKey = key;
+  if (!entries.length) return showEmptyLog(messages, topic, network, ignored, simulated);
+  // Long logs are not delayed for the illustration; the final window and counts persist.
+  const stepMs = animate && entries.length <= MAX_ANIMATED_LINKS ? Math.min(LINK_TRAVEL_MS, MAX_TRAVEL_BUDGET_MS / entries.length) : 0;
+  const lis = entries.map((entry, index) => makeRow(entry, index, animate));
+  const fragment = document.createDocumentFragment();
+  lis.forEach((li) => fragment.append(li));
+  $("rows").append(fragment);
+  receiptView = { entries, rows: lis, current: -1, validCount: 0, ignored, animate: stepMs > 0 };
+  $("receiptStage").style.setProperty("--step-ms", `${stepMs}ms`);
+  $("tResult").textContent = "Checking";
+  const result = await checkReceipts(entries, lis, run, stepMs);
+  if (!result || !isCurrent(run)) return;
+  const { head, validCount, reason, brokenAt } = result;
+  if (reason) {
+    $("tResult").textContent = `Broken at ${brokenAt}`;
+    const nextStep = simulated ? "Inspect the simulated raw entry below; this is not an independent source." : "Inspect the raw entry or cross-check this topic on HashScan.";
+    showVerdict("bad", "Chain verification failed.", `${reason} ${validCount} earlier entr${validCount === 1 ? "y is" : "ies are"} valid; later entries were not checked. ${nextStep}${sourceNote}`, animate);
+    showSummary(entries, topic, network, ignored, validCount ? head : null, "Last valid head", simulated);
+    return;
+  }
+  $("tResult").textContent = "Verified";
+  setSceneState("valid", `All ${validCount} receipts verified from genesis. Every hash link holds.`, "signed");
+  showVerdict("ok", "Chain verified.", `${validCount} entr${validCount === 1 ? "y was" : "ies were"} re-computed in order from genesis. Every hash, sequence number, and previous-entry link holds.${sourceNote}`, animate);
+  showSummary(entries, topic, network, ignored, head, "Chain head", simulated);
+}
+
+function showRunError(error, network, topic, simulated) {
+  const reason = error instanceof Error ? error.message : String(error);
+  const { entries, rows, validCount, ignored } = receiptView;
+  const stopped = rows.findIndex((li) => li.dataset.state === "checking");
+  rows.forEach((li) => {
+    if (li.dataset.state === "checking") setRowState(li, "error");
+    else if (li.dataset.state === "pending") setRowState(li, "skipped");
+  });
+  receiptView = { ...receiptView, current: stopped >= 0 ? stopped : receiptView.current, animate: false };
+  renderTrack();
+  setSceneState("error", `Check stopped. ${validCount} receipts verified; ${entries.length - validCount} not verified.`, "refused");
+  $("tResult").textContent = "Error";
+  const title = entries.length ? "Verification could not finish." : simulated ? "Could not read the simulated log." : "Could not read this topic.";
+  const nextStep = simulated ? "Retry Load simulated log when the agent is available. Source: this agent’s /audit, not a mirror node." : "Check the network and topic ID, then select Verify to fetch and check again.";
+  showVerdict("bad", title, `${reason} ${nextStep}`);
+  if (entries.length) showSummary(entries, topic, network, ignored, validCount ? entries[validCount - 1] : null, "Last valid head", simulated);
+}
+
+$("network").value = params.get("network") === "mainnet" ? "mainnet" : "testnet";
+$("topic").value = params.get("topic") || "";
+$("tNet").textContent = $("network").value;
+if (!$("topic").value) {
+  fetch("/health").then((response) => response.json()).then((health) => {
+    if (!running && activeRun === 0 && !$("topic").value && /^0\.0\.\d+$/.test(health.hcsTopic || "")) $("topic").value = health.hcsTopic;
+    if (health.mode === "simulated") $("demo").hidden = false;
+  }).catch(() => {});
+}
+function selectionChanged() {
+  ++activeRun;
+  setRunning(false);
+  resetResult();
+  $("tNet").textContent = $("network").value;
+  setStatus("Source changed. Select Verify to fetch and check this topic.");
+}
+
+$("network").addEventListener("change", selectionChanged);
+$("topic").addEventListener("input", selectionChanged);
+compactTrack.addEventListener("change", renderTrack);
+window.addEventListener("pagehide", () => {
+  if (!running) return;
+  ++activeRun;
+  setRunning(false);
+  resetResult();
+  setStatus("Check interrupted. Select Verify or load the simulated log again.");
+});
+
+$("form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (running) return;
+  const network = $("network").value;
+  const topic = $("topic").value.trim();
+  const run = beginRun(network, topic, false);
+  try {
+    await verifyTopic(network, topic, run);
+  } catch (error) {
+    if (isCurrent(run)) showRunError(error, network, topic, false);
+  } finally {
+    if (isCurrent(run)) setRunning(false);
+  }
+});
+
+$("demo").addEventListener("click", async () => {
+  if (running) return;
+  const run = beginRun("testnet", "simulated", true);
+  let topic = "simulated";
+  try {
+    const response = await fetch("/audit");
+    if (!isCurrent(run)) return;
+    if (!response.ok) throw new Error(`The agent answered ${response.status} for /audit.`);
+    const data = await response.json();
+    if (!isCurrent(run)) return;
+    if (!data || !Array.isArray(data.entries)) throw new Error("The agent returned no entries array in /audit.");
+    topic = typeof data.topicId === "string" ? data.topicId : "simulated";
+    await verifyTopic("testnet", topic, run, data.entries);
+  } catch (error) {
+    if (isCurrent(run)) showRunError(error, "testnet", topic, true);
+  } finally {
+    if (isCurrent(run)) setRunning(false);
+  }
+});
+
+if (params.get("topic") && params.get("auto") !== "0") $("form").requestSubmit();
+</script>
+</body>
+</html>

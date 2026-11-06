@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Council Agent · Report</title><link rel="icon" href="data:,">
+<link rel="stylesheet" href="/assets/theme.css">
+</head><body data-page="report" data-state="loading">
+<div class="frame">
+  <aside class="vrail"><span>Council</span></aside>
+  <div class="stage">
+    <header class="top" id="top"></header>
+    <main>
+      <!-- REPORT POSTER: left numeral = what the proposal said, right numeral = what the chain will do. They differ on a mismatch. -->
+      <div class="poster">
+        <div>
+          <p class="bignum" id="num-described" aria-label="Described amount"></p>
+          <div class="numcap">Described · <b id="payee-described"></b></div>
+        </div>
+        <div class="mid">
+          <svg class="badge-ring" viewBox="0 0 100 100" aria-hidden="true"><defs><path id="ring" d="M50,50 m-38,0 a38,38 0 1,1 76,0 a38,38 0 1,1 -76,0"/></defs><text><textPath href="#ring">Decision integrity · council agent · decision integrity · </textPath></text><circle cx="50" cy="50" r="2" fill="#df3d2a"/></svg>
+          <svg class="scene" id="scene" viewBox="55 40 190 150" role="img" aria-label="Pixel island"></svg>
+          <div class="stamp" id="stamp" data-decision="PENDING">Pending<small>agent decision</small></div>
+        </div>
+        <div>
+          <p class="bignum" id="num-actual" aria-label="Actual transfer amount"></p>
+          <div class="numcap">Actual transfer · <b id="payee-actual"></b></div>
+        </div>
+      </div>
+      <div class="poster-foot" style="display:grid;grid-template-columns:1fr 1fr;gap:28px;padding:0 0 12px;border-bottom:1px solid var(--rule)">
+        <p class="shout" id="verdict" style="font-size:14px;margin:0 0 12px"></p>
+        <div><p class="shout" id="reason" style="font-size:11px;margin:0 0 12px"></p><p class="actions" style="margin:0"><a class="btn secondary" id="open-console" href="/console.html">Open in console</a> <a class="btn secondary" href="/">Back to atlas</a></p></div>
+      </div>
+    </main>
+    <div class="ticker" id="ticker"></div>
+    <section class="cols4" id="cols"></section>
+  </div>
+</div>
+<script type="module">
+import { api, hbar, qs } from "/assets/api.js";
+import { mountRail, mountTicker } from "/assets/rail.js";
+import { pixelIsland, el, hashSeed } from "/assets/scene.js";
+const $ = (x) => document.getElementById(x);
+const id = qs("proposal");
+const [r, health] = await Promise.all([id ? api.proposal(id) : Promise.resolve({ ok: false, data: { error: "Add ?proposal=<id> to the URL, or pick one on the atlas." } }), api.health()]);
+const h = health.data;
+if (!r.ok) {
+  mountRail($("top"), "", [{ label: "Report", value: "not found", dot: "ink" }]);
+  $("verdict").textContent = r.data.error;
+  $("scene").append(pixelIsland({ cx: 150, cy: 120, seed: 3 }));
+  document.body.dataset.state = "error";
+} else {
+  const { proposal: p, check, lastOutcome: o, large } = r.data;
+  const decision = o?.decision ?? "PENDING";
+  mountRail($("top"), "", [
+    { label: "Verdict", value: check.matches ? "Matches" : "Mismatch", dot: check.matches ? "green" : "red" },
+    { label: "Layer", value: `${h.mode} · ${large ? "large" : "routine"}` },
+    { label: "Proposal", value: p.id, end: true, dot: "red" },
+  ]);
+  const big = (t) => (t / 1e8).toLocaleString(undefined, { maximumFractionDigits: 8 });
+  $("num-described").textContent = big(p.description.amountTinybars);
+  $("num-actual").textContent = big(p.transfer.amountTinybars);
+  $("payee-described").textContent = `${p.description.payee} · ${p.description.token}`;
+  $("payee-actual").textContent = `${p.transfer.payee} · ${p.transfer.token}`;
+  if (!check.matches) $("num-actual").classList.add("red");
+  $("scene").append(pixelIsland({ cx: 150, cy: 118, seed: hashSeed(p.id) }));
+  const stamp = $("stamp"); stamp.dataset.decision = decision;
+  stamp.firstChild.textContent = decision === "SIGNED" ? "Signed" : decision === "REFUSED" ? "Refused" : "Pending";
+  $("verdict").textContent = check.matches
+    ? `${p.description.purpose}. The transfer matches its description.`
+    : `The description said one thing. The transfer does another. ${check.mismatches.map((m) => `${m.field}: ${m.described} vs ${m.actual}`).join(". ")}.`;
+  $("reason").textContent = o ? o.reason.slice(0, 280) : "Not yet submitted to the agent.";
+  $("open-console").href = `/console.html?proposal=${encodeURIComponent(p.id)}`;
+  mountTicker($("ticker"), [`${p.id}`, p.description.purpose, check.matches ? "matches" : "mismatch", `decision ${decision}`, large ? "large · World ID gate" : "routine", o ? `check paid via ${o.paidVia}` : "no check paid yet", `transfer source ${o?.transferSource ?? "request"}`]);
+  const col = (title, lines) => { const d = document.createElement("div"); const l = document.createElement("span"); l.className = "label"; l.textContent = title; const q = document.createElement("p"); q.textContent = lines.join("\n"); q.style.whiteSpace = "pre-line"; d.append(l, q); return d; };
+  $("cols").replaceChildren(
+    col("Decision", [decision, o?.worldGateReason ?? (large ? "World ID required" : "No gate")]),
+    col("Check", [o ? `Paid via ${o.paidVia}` : "Not paid", o?.paidTxId ?? "no payment id"]),
+    col("0G verdict", [o ? `Source ${o.zeroGSource}` : "none", o?.zeroGRequestId ?? "no request id"]),
+    col("Chain", [`Schedule ${o?.scheduledTxId ?? p.scheduleId ?? "none"}`, `Audit ${o?.auditTxId ?? "none"}`, `Transfer read from ${o?.transferSource ?? "request"}`]),
+  );
+  document.body.dataset.state = "ready";
+  document.body.dataset.decision = decision;
+}
+</script>
+</body></html>

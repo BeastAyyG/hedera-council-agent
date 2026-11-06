@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Council Agent · Console</title><link rel="icon" href="data:,">
+<link rel="stylesheet" href="/assets/theme.css">
+</head><body data-page="console" data-state="loading">
+<div class="frame">
+  <aside class="vrail"><span>Council</span></aside>
+  <div class="stage">
+    <div class="bar">
+      <a class="brand" href="/">Council <em>Agent</em></a>
+      <nav><a href="/">Atlas</a><a href="/console.html" aria-current="page">Console</a><a href="/console.html#join">Join</a></nav>
+      <div class="chips" id="chips"></div>
+    </div>
+    <main class="console">
+      <aside id="meta"></aside>
+      <div>
+        <!-- CONSOLE: #banner, #head (selected proposal), #record, #process, then #new, #proposals, #join -->
+        <div id="banner" class="banner" hidden></div>
+        <div class="kicker" id="kicker">Council console</div>
+        <h1 class="h1" id="title">Console</h1>
+        <p class="prose" id="lede" style="max-width:62ch">Submit a proposal, watch the agent check it against the chain, approve large ones with World ID, and join the council. Pick a proposal below to open its record.</p>
+        <div class="actions" id="head-actions"></div>
+
+        <section id="record" aria-label="Selected proposal"></section>
+
+        <section class="sec" id="new" aria-label="New proposal">
+          <h2>New proposal <small>description vs actual transfer</small></h2>
+          <form id="new-form">
+            <div class="formgrid">
+              <div><label for="f-purpose">Purpose</label><input id="f-purpose" name="purpose" value="Pay the venue deposit" required maxlength="200"></div>
+              <div><label for="f-id">Proposal id</label><input id="f-id" name="id" required pattern="[A-Za-z0-9_\-]{1,64}"></div>
+              <div><label for="f-payee">Described payee</label><input id="f-payee" name="payee" value="0.0.1001" required></div>
+              <div><label for="f-amount">Described amount (HBAR)</label><input id="f-amount" name="amount" value="0.1" required></div>
+              <div><label for="f-tpayee">Actual transfer payee</label><input id="f-tpayee" name="tpayee" value="0.0.1001" required></div>
+              <div><label for="f-tamount">Actual transfer amount (HBAR)</label><input id="f-tamount" name="tamount" value="0.1" required></div>
+            </div>
+            <p class="actions"><button type="submit">Submit to the agent</button><span class="muted" style="align-self:center">Make the actual transfer differ to see a refusal.</span></p>
+          </form>
+        </section>
+
+        <section class="sec" id="proposals" aria-label="Proposals"></section>
+
+        <section class="sec" id="join" aria-label="Join the council">
+          <h2>Council seats <small>one person, one seat</small></h2>
+          <p id="seats"></p>
+          <button id="join-btn" class="secondary">Join the council (World ID)</button>
+        </section>
+
+        <div id="qr"></div>
+        <p id="status" role="status"></p>
+        <pre id="result" hidden></pre>
+      </div>
+    </main>
+  </div>
+</div>
+<script src="/vendor/idkit.js"></script>
+<script type="module">
+import { api, bus, hbar, qs } from "/assets/api.js";
+import { runWorldFlow, runMockedFlow } from "/assets/world-flow.js";
+import { mountCompanion } from "/assets/scroll-companion.js";
+const $ = (id) => document.getElementById(id);
+const el = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
+const status = (t, cls = "") => { $("status").textContent = t; $("status").className = cls; };
+const show = (o) => { $("result").hidden = false; $("result").textContent = JSON.stringify(o, null, 2); };
+const toTiny = (h) => Math.round(Number(h) * 1e8);
+const th = (t) => { const x = el("th", t); return x; };
+
+let world = { configured: false, mockedAllowed: false };
+let health = {};
+let selected = qs("proposal");
+
+async function refreshSeats() {
+  const s = (await api.seats()).data;
+  $("seats").textContent = `${s.count} seat${s.count === 1 ? "" : "s"} held.`;
+}
+
+async function refreshList() {
+  const rows = (await api.proposals()).data.proposals ?? [];
+  const box = $("proposals");
+  const t = el("table", undefined, "list");
+  const head = t.createTHead().insertRow();
+  for (const x of ["Proposal", "Amount", "Check", "Decision"]) head.append(th(x));
+  const body = t.createTBody();
+  for (const p of rows) {
+    const tr = body.insertRow(); tr.dataset.proposal = p.id; tr.dataset.decision = p.decision ?? "PENDING"; tr.dataset.selected = String(p.id === selected);
+    tr.insertCell().textContent = `${p.id}${p.large ? " · large" : ""}`;
+    tr.insertCell().textContent = hbar(p.amountTinybars);
+    const c = tr.insertCell(); c.textContent = p.matches ? "matches" : "MISMATCH"; c.className = p.matches ? "green" : "red";
+    const d = tr.insertCell(); d.textContent = p.decision ?? "not submitted"; d.className = "dec"; d.dataset.decision = p.decision ?? "PENDING";
+    tr.onclick = () => select(p.id);
+  }
+  box.replaceChildren(el("h2", undefined), rows.length ? t : el("p", "No proposals yet.", "muted"));
+  box.firstChild.append(document.createTextNode("Proposals"), Object.assign(el("small"), { textContent: `${rows.length} registered` }));
+}
+
+function step(no, title, state, tag, text) {
+  const s = el("div", undefined, "step"); s.dataset.state = state;
+  const n = el("div", undefined, "no"); n.append(el("span", `0${no}`), el("span", tag, "st"));
+  s.append(n, el("h3", title), el("p", text));
+  return s;
+}
+
+async function select(id) {
+  selected = id;
+  history.replaceState(null, "", `?proposal=${encodeURIComponent(id)}`);
+  const r = await api.proposal(id);
+  const box = $("record");
+  if (!r.ok) { box.replaceChildren(el("p", r.data.error, "red")); return; }
+  const { proposal: p, check, lastOutcome: o, large, approval } = r.data;
+  const decision = o?.decision ?? null;
+
+  // Banner and headline
+  const b = $("banner"); b.hidden = !o; b.className = `banner ${decision === "SIGNED" ? "ok" : "bad"}`;
+  if (o) b.replaceChildren(el("b", decision === "SIGNED" ? "Agent signed. " : "Agent refused. "), document.createTextNode(o.reason.slice(0, 220)));
+  $("kicker").textContent = `Proposal ${p.id} · decision trail`;
+  $("title").textContent = p.description.purpose;
+  $("lede").textContent = check.verdict;
+  $("lede").className = `prose ${check.matches ? "" : "red"}`;
+  document.title = `Council Agent · ${p.id}`;
+  $("meta").replaceChildren(...[`Record ${p.id}`, large ? "Large proposal" : "Routine proposal", new Date(p.createdAt).toLocaleDateString()].map((t) => el("div", t)),
+    el("div", health.mode === "real" ? "Real mode" : "SIMULATED", "tagbox"));
+
+  // Actions: submit, approve, report
+  const actions = $("head-actions"); actions.replaceChildren();
+  const sub = el("button", o ? "Submit again" : "Submit to the agent");
+  sub.onclick = async () => {
+    sub.disabled = true;
+    const res = await api.submit(p); show(res.data);
+    status(res.data.decision === "SIGNED" ? `Agent signed. Scheduled tx ${res.data.scheduledTxId}.` : `Agent refused: ${res.data.reason}`, res.data.decision === "SIGNED" ? "green" : "red");
+    await refreshList(); await select(id);
+  };
+  actions.append(sub);
+  if (large && check.matches) {
+    const ap = el("button", approval ? `World ID approved (${approval.source}), valid to ${new Date(approval.expiresAt).toLocaleTimeString()}` : world.configured ? "Approve with World ID" : "Approve (MOCKED demo)", "secondary");
+    ap.disabled = Boolean(approval) || (!world.configured && !world.mockedAllowed);
+    ap.onclick = async () => { ap.disabled = true; await approve(id); await select(id); };
+    actions.append(ap);
+  }
+  const rep = el("a", "Open report", "btn secondary"); rep.href = `/report.html?proposal=${encodeURIComponent(id)}`;
+  actions.append(rep);
+
+  // Record table and process strip
+  const rec = el("table", undefined, "rec");
+  const row = (k, v, cls, hash) => { const tr = rec.insertRow(); tr.append(th(k)); const td = tr.insertCell(); td.textContent = v; if (cls) td.className = cls; if (hash) td.classList.add("hash"); };
+  row("Requested", hbar(p.description.amountTinybars));
+  row("Described payee", p.description.payee);
+  row("Actual transfer", `${hbar(p.transfer.amountTinybars)} to ${p.transfer.payee}`, check.matches ? "" : "red");
+  row("Token", `${p.description.token} / ${p.transfer.token}`);
+  row("Transfer read from", o?.transferSource === "hedera-mirror-node" ? "Hedera mirror node (on-chain)" : "the request body");
+  row("Schedule", o?.scheduledTxId ?? p.scheduleId ?? "none yet", "", true);
+  row("Check payment", o?.paidTxId ? `${o.paidTxId} (${o.paidVia})` : "not paid yet", "", true);
+  row("0G verdict", o ? `${o.zeroGSource}${o.zeroGRequestId ? " · " + o.zeroGRequestId : ""}` : "none yet");
+  row("HCS audit", o?.auditTxId ?? "none yet", "", true);
+  row("World ID gate", o?.worldGateReason ?? (large ? "required for this size" : "not required"), o?.worldGateReason && decision === "REFUSED" ? "red" : "");
+  const sec1 = el("div", undefined, "sec"); sec1.append(el("h2", "Record"), rec);
+
+  const gate = !check.matches ? ["wait", "skipped", "Not reached: the check failed first, so the agent refuses whatever the owner approves."]
+    : !large ? ["pass", "n/a", "Below the large threshold, no World ID needed."]
+    : approval ? ["pass", "approved", `World ID approved (${approval.source}), single use.`]
+    : o?.worldGateReason ? ["fail", "blocked", o.worldGateReason] : ["wait", "pending", "A fresh World ID check for this exact proposal is required."];
+  const steps = el("div", undefined, "steps");
+  steps.append(
+    step(1, "Claim", "pass", "recorded", `${hbar(p.description.amountTinybars)} to ${p.description.payee}.`),
+    step(2, "Check", check.matches ? "pass" : "fail", check.matches ? "matches" : "mismatch", check.matches ? "Description and transfer agree." : check.mismatches.map((m) => `${m.field}: ${m.described} vs ${m.actual}`).join("; ")),
+    step(3, "Gate", gate[0], gate[1], gate[2]),
+    step(4, "Sign", decision === "SIGNED" ? "pass" : decision === "REFUSED" ? "fail" : "wait", decision ? decision.toLowerCase() : "pending", o ? (decision === "SIGNED" ? `Scheduled ${o.scheduledTxId}.` : "No signature added.") : "Waiting for the agent."),
+  );
+  const sec2 = el("div", undefined, "sec"); sec2.dataset.proposal = id; sec2.dataset.decision = decision ?? "PENDING";
+  const h2 = el("h2", "Process"); h2.append(el("small", `claim → check → gate → sign`));
+  sec2.append(h2, steps);
+  box.replaceChildren(sec1, sec2);
+  await refreshList();
+}
+
+async function approve(proposalId) {
+  const res = world.configured
+    ? await runWorldFlow({ proposalId, onQr: (_u, svg) => { const i = el("img"); i.src = svg; i.alt = "Scan with World App"; $("qr").replaceChildren(i); }, onStatus: status })
+    : await runMockedFlow({ proposalId });
+  $("qr").replaceChildren();
+  status(res.ok ? `Approved${res.data.source === "mocked" ? " (MOCKED, demo only)" : " with World ID"}. Single use, 5 minutes.` : res.data.error, res.ok ? "green" : "red");
+}
+
+$("new-form").onsubmit = async (e) => {
+  e.preventDefault();
+  const f = Object.fromEntries(new FormData(e.target));
+  const proposal = {
+    id: f.id,
+    description: { payee: f.payee, amountTinybars: toTiny(f.amount), token: "HBAR", purpose: f.purpose },
+    transfer: { payee: f.tpayee, amountTinybars: toTiny(f.tamount), token: "HBAR" },
+  };
+  const res = await api.submit(proposal);
+  if (res.status >= 400) { status(res.data.error, "red"); return; }
+  show(res.data);
+  status(res.data.decision === "SIGNED" ? `Agent signed. Scheduled tx ${res.data.scheduledTxId}.` : `Agent refused: ${res.data.reason}`, res.data.decision === "SIGNED" ? "green" : "red");
+  await select(proposal.id);
+  $("new-form").elements.id.value = `P-${Date.now().toString(36).toUpperCase()}`;
+};
+$("new-form").elements.id.value = `P-${Date.now().toString(36).toUpperCase()}`;
+
+$("join-btn").onclick = async () => {
+  $("join-btn").disabled = true;
+  const res = world.configured
+    ? await runWorldFlow({ join: true, onQr: (_u, svg) => { const i = el("img"); i.src = svg; $("qr").replaceChildren(i); }, onStatus: status })
+    : world.mockedAllowed ? await runMockedFlow({ join: true }) : { ok: false, data: { error: "World ID is not configured here." } };
+  $("qr").replaceChildren();
+  status(res.ok ? `Joined: ${res.data.seat} (${res.data.proof}).` : res.data.error, res.ok ? "green" : "red");
+  $("join-btn").disabled = false; await refreshSeats();
+};
+
+bus.addEventListener("proposal:decision", (e) => { document.body.dataset.decision = e.detail.outcome.decision; });
+
+health = (await api.health()).data;
+const chip = (t) => el("span", t, "chip");
+$("chips").replaceChildren(chip(`${health.mode} · ${health.network}`), chip(`World ${health.world.startsWith("real") ? "real" : "mocked"}`), chip(`0G ${health.zeroG}`));
+$("meta").replaceChildren(el("div", "No proposal open"), el("div", health.mode === "real" ? "Real mode" : "SIMULATED", "tagbox"));
+world = (await api.worldConfig()).data;
+mountCompanion({ decisionHost: document.body });
+await Promise.all([refreshList(), refreshSeats()]);
+if (selected) await select(selected);
+if (location.hash === "#join") $("join").scrollIntoView();
+document.body.dataset.state = "ready";
+</script>
+</body></html>

@@ -9,6 +9,8 @@
 // the proposal check, and the sign/refuse decision is recorded alongside
 // it. The deterministic mismatch check still decides refusal; 0G writes
 // the human-readable explanation, and its request id is logged per check.
+// With a key set, or in real Hedera mode, a missing verdict means the
+// agent refuses (fails closed); see council.ts.
 // Real mode only when ZERO_G_API_KEY is set. Otherwise SIMULATED mode
 // with a clearly labelled template verdict, never pretending to be 0G.
 
@@ -16,7 +18,9 @@ export interface ZeroGVerdict {
   text: string;
   requestId: string | null;
   model: string;
-  source: "0g" | "simulated";
+  source: "0g" | "simulated" | "unavailable";
+  // Why the call failed, when source is "unavailable".
+  error?: string;
 }
 
 export interface ZeroGConfig {
@@ -44,6 +48,18 @@ export async function zeroGVerdict(
     return { text: `[SIMULATED 0G verdict] ${template}`, requestId: null, model: config.model, source: "simulated" };
   }
   const prompt = `You are a treasury council checker. Write a short plain-language verdict (2-3 sentences) for this proposal check. Do not invent numbers. Check result: ${input.checkVerdict}`;
+  // An outage is reported as source "unavailable". The council fails
+  // closed on it (src/council.ts): no verdict, no signature, unless
+  // ALLOW_NO_0G=true.
+  try {
+    return await callZeroG(config, prompt, template);
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    return { text: `[0G verdict unavailable: ${error}] ${template}`, requestId: null, model: config.model, source: "unavailable", error };
+  }
+}
+
+async function callZeroG(config: ZeroGConfig, prompt: string, template: string): Promise<ZeroGVerdict> {
   const res = await fetch(`${config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
     method: "POST",
     headers: {
@@ -56,6 +72,7 @@ export async function zeroGVerdict(
       messages: [{ role: "user", content: prompt }],
       temperature: 0,
     }),
+    signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");

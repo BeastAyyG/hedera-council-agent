@@ -1,0 +1,100 @@
+/* Shared motion for the council pages. Every effect is tied to a real state (a stage passing, failing, a packet stopping at a gate,
+   a decision landing), never decoration. Written for this project. All of it is off under prefers-reduced-motion. */
+:root { --m-red: var(--red, #e23b28); --m-green: #3f9b45; --m-ink: var(--ink, #111110); --m-hair: var(--hair, #d8d3c6); --m-muted: var(--muted, #8b857a); }
+
+.m-reveal { opacity: 0; transform: translateY(10px); animation: m-in .6s cubic-bezier(.2,.8,.2,1) forwards; animation-delay: var(--d, 0s); }
+@keyframes m-in { to { opacity: 1; transform: none; } }
+
+.m-wipe { clip-path: inset(0 100% 0 0); animation: m-wipe .9s cubic-bezier(.7,0,.2,1) forwards; animation-delay: var(--d, 0s); }
+@keyframes m-wipe { to { clip-path: inset(0 0 0 0); } }
+
+.m-slam { animation: m-slam .6s cubic-bezier(.2,1.6,.35,1) both; animation-delay: var(--d, 0s); }
+@keyframes m-slam { 0% { opacity: 0; transform: rotate(-14deg) scale(2.6); } 55% { opacity: 1; transform: rotate(-3deg) scale(.92); } 78% { transform: rotate(-1deg) scale(1.06); } 100% { opacity: 1; transform: rotate(-1.5deg) scale(1); } }
+
+.m-shake { animation: m-shake .55s cubic-bezier(.36,.07,.19,.97) both; animation-delay: var(--d, 0s); }
+@keyframes m-shake { 10%, 90% { transform: translateX(-1px); } 20%, 80% { transform: translateX(3px); } 30%, 50%, 70% { transform: translateX(-5px); } 40%, 60% { transform: translateX(5px); } }
+
+.m-flash-red { animation: m-flash-red 1.1s ease both; animation-delay: var(--d, 0s); }
+@keyframes m-flash-red { 0% { background-color: rgba(226,59,40,.22); } 100% { background-color: transparent; } }
+.m-flash-green { animation: m-flash-green 1.1s ease both; animation-delay: var(--d, 0s); }
+@keyframes m-flash-green { 0% { background-color: rgba(63,155,69,.2); } 100% { background-color: transparent; } }
+
+/* request in flight: one indeterminate sweep. No stage is claimed to be complete. */
+@keyframes m-sweep { to { transform: translateX(100%); } }
+
+#workingBar { display: none; margin: 18px 0 0; border: 1px solid var(--m-hair); padding: 12px 14px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+#workingBar.on { display: block; position: relative; overflow: hidden; animation: m-in .35s ease both; }
+#workingBar.on::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--m-red), transparent); transform: translateX(-100%); animation: m-sweep 1.4s linear infinite; }
+#workingBar .cap { font-size: 10px; color: var(--m-muted); }
+
+/* decision flow: a packet runs along the real path and stops where the agent stopped */
+.flow { position: relative; margin: 26px 0 8px; padding: 22px 0 6px; border-top: 1px solid var(--m-hair); }
+.flow .cap { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 9px; letter-spacing: .15em; text-transform: uppercase; color: var(--m-muted); margin-bottom: 18px; display: flex; justify-content: space-between; }
+.flow .line { position: relative; height: 2px; background: var(--m-hair); margin: 0 12.5%; } /* node centres sit at 12.5% + k*25% */
+.flow .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--m-red); }
+.flow[data-end="pass"] .fill { background: var(--m-green); }
+.flow .packet { position: absolute; top: -4px; left: 0; width: 10px; height: 10px; background: var(--m-red); transform: translateX(-50%) rotate(45deg); }
+.flow[data-end="pass"] .packet { background: var(--m-green); }
+.flow .nodes { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: -7px; position: relative; }
+.flow .node { text-align: center; position: relative; padding-top: 18px; }
+.flow .node i { position: absolute; left: 50%; top: 0; width: 12px; height: 12px; margin-left: -6px; border: 2px solid var(--m-hair); background: var(--paper, #f2efe7); border-radius: 50%; transition: border-color .3s, background .3s; }
+.flow .node b { display: block; font: 700 11px/1.2 "Helvetica Neue", Helvetica, Arial, sans-serif; letter-spacing: .04em; text-transform: uppercase; }
+.flow .node span { display: block; margin-top: 3px; font: 9px/1.4 ui-monospace, Menlo, Consolas, monospace; color: var(--m-muted); letter-spacing: .04em; }
+.flow .node.lit.pass i { border-color: var(--m-green); background: var(--m-green); }
+.flow .node.lit.fail i { border-color: var(--m-red); background: var(--m-red); }
+.flow .node.lit.wait i { border-color: #b7791f; background: #b7791f; }
+.flow .node.lit.fail b { color: var(--m-red); } .flow .node.lit.pass b { color: var(--m-green); }
+.flow .node:not(.lit) b, .flow .node:not(.lit) span { opacity: .45; }
+.flow .node.lit i { animation: m-pop .5s cubic-bezier(.2,1.6,.35,1) both; }
+.flow .node.fail.lit i::after { content: ""; position: absolute; inset: -6px; border: 1px solid var(--m-red); border-radius: 50%; animation: m-ring 1.2s ease-out 3; }
+@keyframes m-pop { 0% { transform: scale(0); } 100% { transform: scale(1); } }
+@keyframes m-ring { from { transform: scale(.6); opacity: 1; } to { transform: scale(2.2); opacity: 0; } }
+@media (max-width: 720px) { .flow .node span { display: none; } }
+@media (max-width: 420px) { .flow .node b { font-size: 9.5px; letter-spacing: .02em; } .flow .cap { font-size: 8px; letter-spacing: .08em; gap: 8px; } }
+
+/* Atlas toast: a new decision arrived while the page was open */
+#toast { position: fixed; left: 24px; bottom: 24px; z-index: 60; max-width: min(420px, 80vw); border: 1px solid var(--m-ink); background: var(--paper, #f2efe7); padding: 10px 14px; font: 10px/1.5 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .06em; text-transform: uppercase; opacity: 0; transform: translateY(14px); transition: opacity .35s, transform .35s; pointer-events: none; }
+#toast.on { opacity: 1; transform: none; }
+@media (max-width: 620px) { #toast { left: 12px; right: 12px; bottom: 12px; max-width: none; font-size: 9.5px; } }
+#toast b { color: var(--m-red); } #toast.pass b { color: var(--m-green); }
+
+@media (prefers-reduced-motion: reduce) {
+  .m-reveal, .m-wipe, .m-slam, .m-shake, .m-flash-red, .m-flash-green { animation: none !important; opacity: 1 !important; transform: none !important; clip-path: none !important; }
+  #workingBar.on::after, .flow .node.fail.lit i::after { animation: none !important; }
+  .flow .fill, .flow .packet { transition: none !important; }
+}
+
+/* Judge mode panel (console): same paper, ink and red as the page */
+.judge-panel { position: fixed; right: 20px; bottom: 20px; z-index: 70; width: min(330px, calc(100vw - 40px)); border: 1px solid var(--m-ink); background: var(--paper, #f2efe7); padding: 12px 14px; font: 10px/1.5 ui-monospace, Menlo, Consolas, monospace; text-transform: uppercase; letter-spacing: .08em; color: var(--m-ink); box-shadow: 4px 4px 0 var(--m-ink); }
+.judge-panel[hidden] { display: none; }
+.judge-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; border-bottom: 1px solid var(--m-hair); padding-bottom: 7px; }
+.judge-head b { color: var(--m-red); letter-spacing: .15em; }
+.judge-head span { color: var(--m-muted); font-size: 9px; }
+.judge-steps { list-style: none; counter-reset: j; margin: 9px 0 0; padding: 0; }
+.judge-steps li { counter-increment: j; padding: 3px 0 3px 22px; position: relative; color: var(--m-muted); }
+.judge-steps li::before { content: counter(j); position: absolute; left: 0; width: 15px; height: 15px; line-height: 14px; text-align: center; border: 1px solid var(--m-hair); font-size: 9px; }
+.judge-steps li[data-state="active"] { color: var(--m-ink); font-weight: 700; }
+.judge-steps li[data-state="active"]::before { border-color: var(--m-red); background: var(--m-red); color: var(--paper, #f2efe7); }
+.judge-steps li[data-state="done"] { color: var(--m-green); }
+.judge-steps li[data-state="done"]::before { content: "✓"; border-color: var(--m-green); }
+.judge-steps li[data-state="failed"], .judge-steps li[data-state="needs-scan"], .judge-steps li[data-state="stopped"] { color: var(--m-red); }
+.judge-steps li[data-state="failed"]::before, .judge-steps li[data-state="needs-scan"]::before, .judge-steps li[data-state="stopped"]::before { border-color: var(--m-red); }
+.judge-cap { margin: 9px 0 0; min-height: 4.5em; border-left: 2px solid var(--m-red); padding-left: 8px; text-transform: none; letter-spacing: .01em; font-size: 11px; line-height: 1.45; }
+.judge-cap[data-tone="ok"] { border-left-color: var(--m-green); }
+.judge-start { margin-top: 9px; width: 100%; border: 1px solid var(--m-ink); background: var(--m-ink); color: var(--paper, #f2efe7); padding: 7px 10px; font: inherit; letter-spacing: .15em; text-transform: uppercase; cursor: pointer; }
+.judge-start:disabled { opacity: .5; cursor: default; }
+.judge-process-note { margin: 0 0 10px; border-left: 2px solid var(--m-red); padding-left: 10px; font: 700 14px/1.4 ui-monospace, Menlo, Consolas, monospace; color: var(--m-red); animation: m-in .5s ease both; }
+@media (prefers-reduced-motion: reduce) { .judge-process-note { animation: none !important; opacity: 1 !important; transform: none !important; } }
+
+/* micro-interactions: press, lift and focus on controls and rows */
+button,.doc-btn,a[class*="btn"]{transition:transform .15s cubic-bezier(.2,.8,.2,1),box-shadow .15s,border-color .15s,color .15s,background-color .15s}
+button:not(:disabled):hover{transform:translateY(-1px)}
+button:not(:disabled):active{transform:translateY(1px) scale(.985)}
+button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--m-red);outline-offset:3px}
+input:focus,select:focus,textarea:focus{border-color:var(--m-red);box-shadow:0 0 0 3px rgba(226,59,40,.12);transition:border-color .15s,box-shadow .15s}
+details>summary{transition:color .15s,padding-left .2s}
+details>summary:hover{color:var(--m-red);padding-left:4px}
+details[open]>:not(summary){animation:m-in .4s cubic-bezier(.2,.8,.2,1) both}
+.doc-ledger tr{transition:background-color .2s}
+.doc-ledger tbody tr:hover{background-color:rgba(226,59,40,.05)}
+@media(prefers-reduced-motion:reduce){button,details>summary{transition:none}button:hover,button:active{transform:none!important}details[open]>:not(summary){animation:none}}
