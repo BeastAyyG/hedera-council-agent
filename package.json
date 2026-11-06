@@ -1,0 +1,29 @@
+{
+  "dependencies": {
+    "@hiero-ledger/sdk": "^2.90.0",
+    "@x402/core": "^2.30.0",
+    "@x402/express": "^2.30.0",
+    "@x402/fetch": "^2.30.0",
+    "@x402/hedera": "^2.30.0",
+    "express": "^5.0.0"
+  },
+  "description": "AI agent with one signing seat on a Hedera treasury council. Paid proposal checks via x402, Scheduled Transactions plus HCS, no smart contracts, World ID gate for large signings, 0G Private Computer verdicts.",
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0",
+    "@types/express": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "name": "hedera-council-agent",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "demo": "npm run build && node dist/src/demo.js",
+    "start": "node dist/src/server.js",
+    "test": "npm run build && node --test dist/test/*.test.js"
+  },
+  "type": "module",
+  "version": "0.1.0"
+}
