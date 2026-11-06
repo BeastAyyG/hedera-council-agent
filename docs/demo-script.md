@@ -1,56 +1,106 @@
 # Demo video script, 2-3 minutes
 
-Target: 2 min 45 sec, 720p or better, screen recording, human voiceover, no TTS, no sped-up footage, no phone recording. Intro under 20 seconds.
+Target: 2 min 40 sec. 720p or better, screen recording, human voiceover (no TTS), normal speed, no phone recording.
+Intro under 20 seconds.
 
-Record with real credentials if they arrive. If not, record the simulated rehearsal and say so on screen, do not present SIM ids as real.
+**Honesty rule.** Every shot marked *SIMULATED unless keyed* shows simulated output when the keys are missing. In that
+case, keep the on-screen `SIMULATED` / `MOCKED` / `DEMO` badges visible and say it out loud once in the intro. Never
+present `SIM-` ids as real.
 
-## 0:00-0:15, intro (lead with the refusal)
-Open on the refusal, not the payment: a terminal already showing Scene 2's `Decision: REFUSED` line.
-Say: "An AI agent holds one signing seat on a Hedera treasury council. It pays for a check of every proposal and signs the honest ones. Watch what it refuses."
-Then show the repo README and the proposal list.
+| Without this key | What is simulated on screen |
+| --- | --- |
+| `HEDERA_ACCOUNT_ID`, `HEDERA_PRIVATE_KEY` | Payment, schedule and HCS ids are `SIM-…`. `/verify.html` reads the agent's log (Load simulated log), not a mirror node |
+| `ZERO_G_API_KEY` | The instruction is compiled by the deterministic parser (`SIMULATED 0G` badge, no request id). Verdicts are templates |
+| `WORLD_RP_ID`, `WORLD_APP_ID`, `WORLD_SIGNING_KEY` | Members are DEMO identities with MOCKED proofs. The "Act as" picker plays several voters |
 
-## 0:15-0:35, Scene 1, routine proposal signs
-Run `npm run demo`, show Scene 1 only, or run the server and POST a routine proposal.
-Say: "Proposal P-001, 0.1 HBAR to the venue. The agent pays $0.01 for the check, 0G writes the verdict, the transfer on Hedera matches, the agent signs."
-Show on screen: the 402 payment, the 0G request id, the Scheduled Transaction id, and the HashScan link if real. If simulated, say "simulated, no real chain ids yet" out loud.
+## Before recording
 
-## 0:35-1:00, Scene 2, mismatch refuses
-Show Scene 2.
-Say: "Proposal P-002 says pay the caterer, but the transfer goes to a different account for nine times the amount. The agent paid for the check, and still refused. That is the whole point, the check is not a rubber stamp."
-Show the exact mismatch fields on screen.
+```bash
+npm test && npm run demo          # expect: ALL 12 SCENES CORRECT
+STATE_FILE=.data/video-state.json npm start   # a fresh state file: empty council, no spend this month
+```
 
-## 1:00-1:30, Scenes 3 and 4, World ID gate
-Show Scene 3, then Scene 4.
-Say: "Large proposals need the owner's fresh World ID, tied to that exact proposal. Approved, the agent signs. Denied or expired, the agent does not sign, even though the transfer itself matches."
-Show the console approval (QR for World App, or the labelled MOCKED button), the server verification, and the denied path.
+Open `/council.html` and join three members ("Join as a demo member", then "Add a demo member" twice). Real World mode
+needs three people with World App instead. Leave the Instructions page empty: the video drafts the instruction live.
 
-## 1:30-1:45, Scene 5, yesterday's approval is refused
-Show Scene 5 (the setup line, then the refusal).
-Say: "That approval signed one payment and is spent. Presenting it again for the same proposal gets nothing: the World ID gate refuses."
+The demo registry (simulated mode) is enforced before the instruction. Use 0.0.1001 and 0.0.1002 as the instruction's
+payees and 0.0.1003 as the "new" payee (registered, but not named in the instruction). A payee outside the registry
+is refused outright, with no vote.
 
-## 1:45-2:10, Scene 6, the recipient was a lie
-Show Scene 6, side by side with Scene 1 (same amount, same description).
-Say: "The 402 response is untrusted input. Here it names a different wallet than the registered check service. The agent refuses before paying: nothing is spent, and the refusal is logged. The amount was right. The recipient was a lie."
-Point out that the council's payee registry is the project's own list on Hedera, not ERC-8004 or ERC-8478.
+## 0:00-0:18 Problem (intro)
+Shot: the Atlas page (`/`), then `/council.html` showing three members.
+Say: "Give an AI agent your company's treasury key, and one bad prompt or one dishonest colleague can empty it. Make
+a human approve every payment, and you don't need an agent. Here, you tell it once, and it guards the treasury. This
+recording is in simulated mode: the badges say so."
 
-## 2:10-2:30, Scene 7, 0G unavailable fails closed
-Show Scene 7.
-Say: "If 0G cannot write the verdict, the agent does not carry on without it. No verdict, no signature. Every logged decision carries the 0G request id and a hash of the verdict and the proposal."
+## 0:18-0:40 The owner writes the instruction, 0G compiles it
+Shot: `/mandate.html`. Type or paste:
+> Pay 0.0.1001 or 0.0.1002 up to 50 HBAR each, at most 100 HBAR a month. Anything else goes to the council.
 
-## Optional beat, Scene 8, the re-check at execution (15 seconds, only if the video stays under 3 minutes)
-Show Scene 8.
-Say: "A proposal that passes every check does not sign straight away. It waits out a challenge window. Here the payee is revoked inside the window, so at execution the agent re-checks and prints: re-checked at execution, payee revoked, aborted."
-The demo uses a fake clock, so say "ten minute window, simulated clock" out loud. Skip this beat rather than cut the refusal scenes.
+Press compile. The rules appear as a checklist: one payment at most 50 HBAR, per month at most 100 HBAR, recipients
+only 0.0.1001 and 0.0.1002, purposes any, anything else goes to a council vote.
+*SIMULATED unless keyed* (`SIMULATED 0G` badge; with a key, the 0G request id is shown).
+Say: "The owner writes it once, in plain words. 0G compiles it into five rules that code can check. The AI never signs
+and never decides a payment. If the model's output is not valid rules, nothing is created."
 
-## 2:30-2:45, close
-Say: "Hedera x402 pays for the check, Scheduled Transactions fix the transfer, HCS logs every decision, World ID gates the large ones, 0G writes the verdict. One agent seat, three partners, five tracks."
-Show the repo URL, https://github.com/BeastAyyG/hedera-council-agent, and the track list.
+## 0:40-1:00 The council adopts it with World ID
+Shot: `/council.html`. Under **Act as**, pick the first member and vote yes on the instruction, then the second. The
+tally reaches 2 of 2 needed and the instruction becomes active. Cut to `/mandate.html`: active instruction, rules hash,
+empty monthly spend bar.
+*SIMULATED unless keyed* (DEMO identities and MOCKED proofs; with World keys each ballot is a World App scan).
+Say: "Each council seat is one verified human. Each ballot is a World ID proof bound to these exact rules and to this
+choice, so it can't be reused on anything else. A majority adopts it, and the rules hash goes into the Hedera audit
+log."
 
-Shortcut: press J on the console (or open `/console.html?judge=1`) to run the whole demo.
+## 1:00-1:20 A payment inside the rules: signed, no vote
+Shot: `/console.html`. Submit payee 0.0.1001, 50 HBAR, purpose "Pay the venue balance", with the transfer the same.
+The result: signed, "Within standing instruction M-1".
+*SIMULATED unless keyed* (`SIM-` payment, schedule and HCS ids).
+Say: "Fifty HBAR to a named vendor. The agent pays a one-cent x402 check fee, the transfer matches, the payee is
+registered, and it's inside the rules. It co-signs the Hedera Scheduled Transaction. Nobody voted, and nobody had to."
+
+## 1:20-1:50 A payment outside the rules: council vote, then signed
+Shot: `/console.html`. Submit 0.0.1003, 30 HBAR, "Pay the new AV vendor". The result: waiting for the council, with
+the reason "0.0.1003 is not one of the allowed payees". Cut to `/council.html`: the open vote shows that violation.
+Act as two members and vote yes. The payment is signed. Optionally show `/member.html?seat=council-seat:1` with the
+ballots cast.
+*SIMULATED unless keyed.*
+Say: "A vendor the instruction doesn't name. The agent doesn't refuse it and doesn't guess. It asks the council. Two
+yes votes, the agent re-checks everything, and signs, without paying for the check a second time."
+
+## 1:50-2:15 Monthly cap exceeded: vote, refused
+Shot: `/console.html`. Submit 0.0.1002, 40 HBAR, "Pay the caterer". Waiting for the council: "would bring this month
+to 120 of 100 HBAR". On `/council.html`, two members vote no, and the payment is refused. Cut to the spend bar on
+`/mandate.html` (80 of 100 HBAR).
+*SIMULATED unless keyed.*
+Say: "This vendor is allowed, but this payment would break the monthly cap. The council says no, so the agent doesn't
+sign. A dishonest proposer can't write their way around this: the rules belong to the owner and the council, not to
+whoever submits the payment."
+
+## 2:15-2:40 Anyone can verify it, close
+Shot: `/verify.html`. Simulated: **Load simulated log**; real: enter the HCS topic id. The entries turn green one by
+one: MANDATE_PROPOSED, VOTE, MANDATE_ADOPTED, SIGNED, VOTE_OPENED, VOTE_PASSED, VOTE_FAILED. Optionally show
+`npm run verify -- <proposalId>` in a terminal.
+*SIMULATED unless keyed* (the simulated log comes from the agent. Real mode reads a Hedera mirror node in your
+browser).
+Say: "Every instruction, ballot and payment is a hash-chained entry on Hedera, and this page re-checks the whole chain
+in your browser. Hedera holds the money and the record, World ID makes each vote one human, and 0G turns words into
+rules. Tell it once. It guards the treasury."
+Show the repo URL: https://github.com/BeastAyyG/hedera-council-agent
+
+## Fallback: terminal only
+If the UI misbehaves, record `npm run demo` and narrate scenes 9-12 with the same lines. Scene 9: compile and adopt.
+Scene 10: inside, signed. Scene 11: new payee, 2 yes, signed with "Check fee paid during the vote: $0.00". Scene 12:
+over the cap, 2 no, refused. Finish on the `/verify.html` shot.
+
+## Optional beats (only if under 3 minutes)
+- Scene 2 of `npm run demo` (10 s): a transfer that does not match its description is refused, even after paying for
+  the check.
+- Scene 7 (10 s): 0G unavailable, so the agent fails closed.
 
 ## Checklist before recording
-- `npm test` green, 109/109
-- `npm run demo` green, all 8 scenes correct (`ALL 8 SCENES CORRECT`)
-- If real mode: .env filled, one real x402 payment settled, HashScan link copied into the README "Hedera transaction IDs" section
-- Close other windows, use a clean terminal, 720p or better
-- Record in one take if possible, human voice, normal speed
+- `npm test` green, `npm run demo` prints `ALL 12 SCENES CORRECT`
+- A fresh `STATE_FILE`, three members joined, no instruction yet
+- Real mode: `.env` filled, one real x402 payment settled, and its HashScan link copied into the README "Hedera
+  transaction IDs" section
+- Clean browser window, 720p or better, one take if possible, human voice, normal speed

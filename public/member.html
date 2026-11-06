@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Council Agent · My seat</title><link rel="icon" href="data:,">
+<link rel="stylesheet" href="/assets/console-original.css">
+<link rel="stylesheet" href="/assets/motion.css">
+<link rel="stylesheet" href="/assets/council-scene.css">
+<link rel="stylesheet" href="/assets/council-pages.css">
+</head><body data-page="member" class="cv-page" data-state="loading">
+<div class="app-shell">
+  <aside class="app-rail" aria-hidden="true">
+    <a href="/" class="app-rail-mark">COUNCIL</a>
+    <span class="app-rail-rule"></span>
+    <span class="app-rail-meta">Council Agent, Vol. 1</span>
+  </aside>
+  <div class="app-rail-r" aria-hidden="true"><span class="app-dot"></span><span class="app-rail-meta" id="railMode">&mdash;</span></div>
+
+  <header class="app-header">
+    <div class="app-header-inner">
+      <a href="/" class="app-wordmark"><span class="app-wordmark-mark" aria-hidden="true"></span><span class="app-wordmark-text">Council <em>Agent</em></span></a>
+      <span class="app-header-note">Working papers</span>
+      <nav class="app-nav" aria-label="Primary"><a href="/">Atlas</a><a href="/console.html">Console</a><a href="/mandate.html">Instructions</a><a href="/council.html">Council</a><a href="/member.html" aria-current="page">My seat</a><a href="/report.html">Report</a><a href="/policy">Policy</a><a href="/audit/verify">Audit</a></nav>
+      <div class="app-header-actions">
+        <a href="/audit" class="app-header-link"><span>Audit log</span></a>
+        <span class="app-chain"><span class="status-dot text-safe"></span><span id="chainTag">&mdash;</span></span>
+      </div>
+    </div>
+    <nav class="app-mobile-nav" aria-label="Primary mobile"><a href="/">Atlas</a><a href="/console.html">Console</a><a href="/mandate.html">Instructions</a><a href="/council.html">Council</a><a href="/member.html" aria-current="page">My seat</a><a href="/report.html">Report</a><a href="/policy">Policy</a><a href="/audit/verify">Audit</a></nav>
+  </header>
+  <main class="app-main">
+    <div class="doc-page">
+      <aside class="doc-margin">
+        <div class="doc-folio">My seat</div>
+        <div class="doc-folio mt-1" id="mSeat">&mdash;</div>
+        <div class="cv-margin-notes">
+          <div class="doc-folio">Ballots<span class="cv-margin-big" id="mBallots">0</span></div>
+          <div class="doc-folio">Waiting<span class="cv-margin-big" id="mWaiting">0</span></div>
+        </div>
+        <div class="mt-6"><span class="doc-stamp" id="mStamp">Seat</span></div>
+      </aside>
+
+      <div class="doc-body">
+        <header>
+          <span class="doc-folio" id="folio">Council member · one person, one seat</span>
+          <h1 class="doc-title mt-2 text-body" id="title">My seat on the council.</h1>
+          <p class="doc-deck mt-4 cv-lede" id="lede">A member's page: the seat, when it was taken, every ballot it cast, and the votes still waiting for it. A council's votes are public.</p>
+          <div id="identity"></div>
+          <div id="qr" class="cv-qr" hidden></div>
+          <p id="status" class="cv-status" role="status" aria-live="polite"></p>
+        </header>
+
+        <section class="doc-section" id="seat" aria-labelledby="seatTitle">
+          <div class="doc-section-head"><h2 class="doc-section-title" id="seatTitle">Seat</h2><span class="doc-folio" id="seatFolio">&mdash;</span></div>
+          <div id="seatBox"></div>
+        </section>
+
+        <section class="doc-section" id="waiting" aria-labelledby="waitingTitle">
+          <div class="doc-section-head"><h2 class="doc-section-title" id="waitingTitle">Waiting for you</h2><span class="doc-folio" id="waitingFolio">&mdash;</span></div>
+          <div class="cv-cards" id="waitingList" aria-live="polite"></div>
+        </section>
+
+        <section class="doc-section" id="ballots" aria-labelledby="ballotsTitle">
+          <div class="doc-section-head"><h2 class="doc-section-title" id="ballotsTitle">Ballots cast</h2><span class="doc-folio" id="ballotsFolio">&mdash;</span></div>
+          <div id="ballotsBox"></div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <footer class="app-footer">
+    <div class="app-footer-inner">
+      <p id="footLeft">Council Agent, Mumbai 2026</p>
+      <div class="flex flex-wrap items-center gap-4"><p id="footRight">&mdash;</p></div>
+    </div>
+  </footer>
+</div>
+<script src="/vendor/idkit.js"></script>
+<script type="module">
+import { api, qs } from "/assets/api.js";
+import { $, el, when, identities, loadWorld, isDemo, feedback, mountIdentityBar, voteCard, updateVoteCard, showStamp, castBallot, seatAvatar, sourceBadge, pill, poll, fillChrome } from "/assets/council-votes.js";
+import { reduced, stagger } from "/assets/motion.js";
+
+const fb = feedback($("status"), $("qr"));
+const cards = new Map();
+let world = { configured: false, mockedAllowed: false };
+let seat = qs("seat") || identities.current()?.seat || null;
+let bar;
+
+// Who may press the buttons here: this browser's DEMO identity for this seat, or anyone with World ID (the proof picks the seat).
+function ctx() {
+  const mine = seat ? identities.find(seat) : null;
+  const readOnly = world.configured || mine ? null
+    : isDemo(world) ? `This browser does not hold ${seat}. Open a seat you hold, or vote as it on the council page.` : "World ID is not configured on this server.";
+  return { world, identity: mine ?? (world.configured ? { seat } : null), readOnly, onVote };
+}
+
+async function onVote(item, choice, card) {
+  const res = await castBallot({ item, choice, world, identity: ctx().identity, fb });
+  if (res.ok && res.data.vote && res.data.vote.status !== "open") showStamp(card, res.data.vote.status === "passed");
+  if (res.ok) updateVoteCard(card, { ...item, vote: res.data.vote, decision: res.data.outcome?.decision ?? item.decision }, ctx());
+  setTimeout(refresh, res.ok && res.data.vote?.status !== "open" && !reduced() ? 2600 : 0);
+}
+
+function renderSwitch() {
+  const list = identities.list();
+  if (!list.length) return null;
+  const nav = el("nav", undefined, "cv-switch", { "aria-label": "Seats held by this browser" });
+  list.forEach((x) => nav.append(el("a", x.seat, undefined, { href: `/member.html?seat=${encodeURIComponent(x.seat)}`, ...(x.seat === seat ? { "aria-current": "page" } : {}) })));
+  return nav;
+}
+
+function renderNoSeat() {
+  $("title").textContent = "You do not hold a seat yet.";
+  $("lede").textContent = world.configured
+    ? "Join with World ID: one person, one seat, keyed by your World ID nullifier. Then this page shows your ballots and the votes waiting for you."
+    : isDemo(world) ? "This browser has no DEMO identity yet. Join as a demo member (a MOCKED proof, clearly labelled), or open any member from the council page."
+    : "World ID is not configured on this server, so nobody can join from this browser.";
+  $("seatFolio").textContent = "no seat";
+  $("seatBox").replaceChildren(el("p", undefined, "cv-empty"));
+  $("seatBox").firstChild.append("No seat to show. ", el("a", "See all members on the council page", undefined, { href: "/council.html#members" }), ".");
+  $("waitingFolio").textContent = "—"; $("ballotsFolio").textContent = "—";
+  $("waitingList").replaceChildren(el("p", "Votes waiting for a seat appear here once you hold one.", "cv-empty"));
+  $("ballotsBox").replaceChildren();
+}
+
+function renderSeat(m) {
+  const mine = identities.find(m.seat);
+  document.title = `Council Agent · ${m.seat}`;
+  $("mSeat").textContent = m.seat;
+  $("mStamp").textContent = m.source === "world" ? "World ID" : "Mocked";
+  $("folio").textContent = `Council member · ${m.seat}`;
+  $("title").textContent = mine ? `My seat: ${m.seat}.` : `Seat ${m.seat}.`;
+  $("lede").textContent = mine ? (mine.source === "world" ? "This browser joined as this seat with World ID. Every ballot is a fresh proof." : "This browser holds this seat as a DEMO identity (MOCKED proof). Ballots below are cast as this seat.")
+    : "A council's votes are public: this is the seat's record. Only its holder can vote as it.";
+  $("seatFolio").textContent = `joined ${when(m.joinedAt)}`;
+  const key = JSON.stringify([m.seat, m.source, m.joinedAt, Boolean(mine), m.ballots.length, identities.list().length]);
+  if ($("seatBox").dataset.key !== key) {
+    $("seatBox").dataset.key = key;
+    const card = el("article", undefined, "cv-seat-card", { "aria-label": `Seat ${m.seat}` });
+    const info = el("div");
+    info.append(el("span", "Council seat", "doc-folio"), el("h2", m.seat));
+    const facts = el("div", undefined, "cv-seat-facts");
+    facts.append(sourceBadge(m.source), el("span", `joined ${when(m.joinedAt)}`), el("span", `${m.ballots.length} ballot${m.ballots.length === 1 ? "" : "s"} cast`));
+    if (mine) facts.append(el("span", mine.source === "world" ? "held by this browser (World ID)" : "held by this browser (DEMO)", "cv-mono"));
+    info.append(facts);
+    const sw = renderSwitch(); if (sw) info.append(sw);
+    card.append(seatAvatar(m.seat, { pose: m.awaiting.length ? "wait" : "idle", size: 96 }), info);
+    $("seatBox").replaceChildren(card);
+  }
+}
+
+function renderWaiting(m) {
+  $("mWaiting").textContent = String(m.awaiting.length);
+  $("waitingFolio").textContent = m.awaiting.length ? `${m.awaiting.length} open vote${m.awaiting.length === 1 ? "" : "s"} this seat can still vote on` : "nothing waiting";
+  const box = $("waitingList");
+  const keep = new Set(m.awaiting.map((i) => i.subject));
+  for (const [s, card] of cards) if (!keep.has(s) && card.dataset.status === "open") { card.remove(); cards.delete(s); }
+  const added = [];
+  m.awaiting.forEach((item) => {
+    let card = cards.get(item.subject);
+    if (!card) { card = voteCard(item, ctx()); cards.set(item.subject, card); box.append(card); added.push(card); }
+    else updateVoteCard(card, item, ctx());
+  });
+  box.querySelector(".cv-empty")?.remove();
+  if (!box.children.length) box.append(el("p", "Nothing is waiting for this seat. Payments inside the standing instruction never need a vote.", "cv-empty"));
+  if (added.length && !reduced()) stagger(added, 0, 0.06);
+}
+
+function renderBallots(m) {
+  $("mBallots").textContent = String(m.ballots.length);
+  $("ballotsFolio").textContent = m.ballots.length ? `${m.ballots.length} cast · one per seat per subject` : "none yet";
+  const box = $("ballotsBox");
+  const key = JSON.stringify(m.ballots);
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  if (!m.ballots.length) { box.replaceChildren(el("p", "This seat has not voted yet.", "cv-empty")); return; }
+  const table = el("table", undefined, "doc-ledger cv-ledger");
+  const hr = el("tr");
+  [["Subject", ""], ["Kind", ""], ["Choice", ""], ["When", "cv-num"]].forEach(([t, c]) => hr.append(el("th", t, c, { scope: "col" })));
+  const head = el("thead"); head.append(hr);
+  const body = el("tbody");
+  for (const b of [...m.ballots].reverse()) {
+    const tr = el("tr");
+    const s = el("td"); s.append(el("a", b.subject, "cv-mono", { href: b.kind === "mandate" ? "/mandate.html#history" : `/console.html?proposal=${encodeURIComponent(b.subject)}` }));
+    const c = el("td"); c.append(pill(b.choice === "yes" ? "safe" : "danger", b.choice));
+    tr.append(s, el("td", b.kind === "mandate" ? "standing instruction" : "payment"), c, el("td", when(b.at), "cv-num"));
+    body.append(tr);
+  }
+  table.append(head, body);
+  box.replaceChildren(table);
+}
+
+async function refresh() {
+  const s = await api.seats();
+  if (s.ok && bar.prune(s.data.seats.map((x) => x.seat)) && !new URLSearchParams(location.search).get("seat")) seat = identities.current()?.seat ?? null;
+  if (!seat) { renderNoSeat(); return; }
+  const r = await api.member(seat);
+  if (!r.ok) {
+    const known = s.ok && s.data.seats.some((x) => x.seat === seat);
+    fb.set(r.status === 404 ? (known ? "This server has no member route yet (GET /council/members/:seat)." : `No seat ${seat} on this server.`) : r.data?.error || "Could not load this seat.", "bad");
+    renderNoSeat();
+    return;
+  }
+  renderSeat(r.data);
+  renderWaiting(r.data);
+  renderBallots(r.data);
+}
+
+world = await loadWorld();
+// Opening a seat this browser holds makes it the identity this browser acts as.
+if (seat && identities.find(seat)) identities.use(seat);
+bar = mountIdentityBar($("identity"), {
+  world, fb,
+  onChange: async (next) => {
+    seat = next?.seat ?? seat;
+    const url = new URL(location.href); if (seat) url.searchParams.set("seat", seat); history.replaceState(null, "", url);
+    fb.set("", "neutral");
+    cards.forEach((c) => c.remove()); cards.clear();
+    await refresh();
+  },
+});
+fillChrome();
+try { await refresh(); } catch { fb.set("Could not load this seat. Reload to retry.", "bad"); }
+document.body.dataset.state = "ready";
+if (!reduced()) stagger(document.querySelectorAll(".doc-body > header, .doc-section"), 0.05, 0.08);
+poll(refresh, 4000);
+</script>
+</body></html>

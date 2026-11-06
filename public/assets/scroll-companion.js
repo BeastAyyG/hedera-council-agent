@@ -77,6 +77,7 @@ export function mountCompanion({ decisionHost, sections = ".doc-section[id]" } =
       else if (next === "REFUSED") flash("refused", "Refused");
       else if (next === "CANCELLED") flash("refused", "Cancelled");
       else if (next === "PENDING_CHALLENGE") flash("wait", "Waiting");
+      else if (next === "PENDING_VOTE") flash("wait", "Council vote");
     });
     observer.observe(decisionHost, { attributes: true, attributeFilter: ["data-decision"] });
     stopWatching = () => observer.disconnect();

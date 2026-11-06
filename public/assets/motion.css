@@ -56,7 +56,7 @@
 #toast { position: fixed; left: 24px; bottom: 24px; z-index: 60; max-width: min(420px, 80vw); border: 1px solid var(--m-ink); background: var(--paper, #f2efe7); padding: 10px 14px; font: 10px/1.5 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .06em; text-transform: uppercase; opacity: 0; transform: translateY(14px); transition: opacity .35s, transform .35s; pointer-events: none; }
 #toast.on { opacity: 1; transform: none; }
 @media (max-width: 620px) { #toast { left: 12px; right: 12px; bottom: 12px; max-width: none; font-size: 9.5px; } }
-#toast b { color: var(--m-red); } #toast.pass b { color: var(--m-green); }
+#toast b { color: var(--m-red); } #toast.pass b { color: var(--m-green); } #toast.vote b { color: #9a6b15; }
 
 @media (prefers-reduced-motion: reduce) {
   .m-reveal, .m-wipe, .m-slam, .m-shake, .m-flash-red, .m-flash-green { animation: none !important; opacity: 1 !important; transform: none !important; clip-path: none !important; }

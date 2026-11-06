@@ -28,17 +28,33 @@
 //     store the approval server-side (5 min, single use)
 //   POST /council/join          -> Proof of Human council join, one seat per nullifier
 //   GET  /council/seats         -> current seats
+//   Standing instructions and council votes (docs/mandate-spec.md):
+//   GET  /mandate, POST /mandate/draft, POST /mandate/:id/vote, POST /proposals/:id/vote,
+//   GET  /council/votes, GET /council/members/:seat
 //   GET  /                      -> static UI from public/ (see docs/ui-handoff.md)
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import QRCode from "qrcode";
 import { atomicToUsd, SpendingCap, usdcToAtomic } from "./budget.js";
-import { executePending, processProposal, type CouncilOutcome } from "./council.js";
+import { executePending, processProposal, resolveVote, type CouncilOutcome, type MandateContext } from "./council.js";
 import { loadApiAuth } from "./auth.js";
 import { checkProposal } from "./checker.js";
 import { HederaClient, loadHederaConfig } from "./hedera.js";
-import { canonical, sha256, verifyChain, isChainedEntry } from "./auditlog.js";
+import { canonical, sha256, verifyChain, isChainedEntry, type EntryMeta } from "./auditlog.js";
+import {
+  ballotDetail,
+  castBallot,
+  compileMandate,
+  MAX_MANDATE_TEXT,
+  monthKey,
+  openTally,
+  rulesHash,
+  summarize,
+  voteSignal,
+  type MandateDraft,
+  type VoteItem,
+} from "./mandate.js";
 import { HederaChain, loadCouncilSetup, type ChainPort } from "./chain.js";
 import { SimulatedCheckPayer, X402CheckPayer, type CheckPayer } from "./payment.js";
 import { isLargeProposal, proposalFingerprint, validateProposal, type Proposal } from "./proposal.js";
@@ -133,6 +149,8 @@ interface RegisteredProposal {
   busy?: boolean;
   // Settles when the in-flight execution has recorded its outcome.
   inflight?: Promise<void>;
+  // Epoch in which its council vote opened (PENDING_VOTE).
+  voteEpoch?: number;
 }
 
 export interface AppOptions {
@@ -146,6 +164,8 @@ export interface AppOptions {
   // Injected Hedera side (tests): lets seat revocation be exercised without a network.
   chain?: ChainPort;
   port?: number;
+  // Injected 0G transport for compiling standing instructions (tests).
+  zeroGFetch?: typeof fetch;
 }
 
 export async function createApp(options: AppOptions = {}): Promise<Express> {
@@ -181,6 +201,40 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
   const proposals = new Map<string, RegisteredProposal>();
   const worldOn = isWorldConfigured(agent.world);
   const allowMocked = mockedAllowed(agent.world, agent.hedera.config.network);
+  // Proposal state is in memory: a vote left open by a previous process cannot be resolved.
+  for (const v of store.votes()) if (v.decision === "PENDING_VOTE") store.putVote({ ...v, decision: "CANCELLED" });
+
+  const mandateCtx = (): MandateContext | null => {
+    const m = store.activeMandate();
+    if (!m) return null;
+    return { id: m.id, rulesHash: m.rulesHash, rules: m.rules, spentThisMonthTinybars: store.spentThisMonth(clock()), seats: store.seats().map((s) => s.seat) };
+  };
+  // Decisions that read the monthly spend run one at a time, so two payments
+  // cannot both fit under the cap on the same reading.
+  let spendQueue: Promise<unknown> = Promise.resolve();
+  const serialized = <T>(fn: () => Promise<T>): Promise<T> => {
+    const run = spendQueue.then(fn, fn);
+    spendQueue = run.catch(() => undefined);
+    return run;
+  };
+  const recordIfSigned = (o: CouncilOutcome) => {
+    if (o.decision === "SIGNED") store.recordSpend({ proposalId: o.proposal.id, amountTinybars: o.proposal.transfer.amountTinybars, at: clock().toISOString() });
+  };
+  const proposalVoteOpen = (v: VoteItem) => v.decision === "PENDING_VOTE" && v.vote.status === "open";
+  const mandateItem = (m: MandateDraft): VoteItem => ({
+    subject: m.id,
+    kind: "mandate",
+    title: `Standing instruction ${m.id}: ${m.text.slice(0, 160)}`,
+    summary: m.summary,
+    vote: m.vote,
+    decision: m.status,
+    openedAt: m.createdAt,
+  });
+  const allVotes = () => {
+    const items = [...store.votes(), ...store.mandates().map(mandateItem)].sort((a, b) => b.openedAt.localeCompare(a.openedAt));
+    const isOpen = (i: VoteItem) => (i.kind === "mandate" ? i.decision === "open" : proposalVoteOpen(i));
+    return { items, isOpen };
+  };
   const app = express();
   app.use(express.json({ limit: "64kb" }));
 
@@ -265,6 +319,10 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
       world: worldOn ? `real (${agent.world.environment})` : "not configured, MOCKED approvals only",
       councilSeats: store.seats().length,
       epoch: store.epoch(),
+      mandate: (() => {
+        const m = store.activeMandate();
+        return m ? `${m.id} (rulesHash ${m.rulesHash}): inside it the agent decides alone, outside it the council votes` : "none: every large payment needs a World ID approval";
+      })(),
       auth: authLabel,
       challengeWindow: agent.challengeWindowSeconds > 0 ? `${agent.challengeWindowSeconds}s, re-checked at execution` : "off (signs as soon as every check passes)",
       note:
@@ -319,15 +377,45 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
       res.json({ ...known.lastOutcome, note: `Already in its challenge window until ${known.pending.until}; not re-processed. Use POST /proposals/${proposal.id}/execute.` });
       return;
     }
+    // Nor is one waiting for the council (that would open a second vote).
+    if (known?.lastOutcome?.decision === "PENDING_VOTE") {
+      res.json({ ...known.lastOutcome, note: `Waiting for the council vote; not re-processed. Seats vote with POST /proposals/${proposal.id}/vote.` });
+      return;
+    }
+    const pastVote = store.vote(proposal.id);
+    if (pastVote) {
+      res.status(409).json({ error: `The council already voted on ${proposal.id} (${pastVote.decision ?? pastVote.vote.status}). Use a new id.` });
+      return;
+    }
     const entry = known ?? { proposal, fingerprint, lastOutcome: null, pending: null };
     proposals.set(proposal.id, entry);
     // Resubmissions use the proposal as already resolved against Hedera, so
     // the same schedule is checked and signed, not a new one created.
-    const outcome = await processProposal(agent, entry.proposal, approvals.get(proposal.id, clock()));
+    const decide = () => processProposal(agent, entry.proposal, approvals.get(proposal.id, clock()), mandateCtx());
+    const outcome = store.activeMandate() ? await serialized(async () => {
+      const o = await decide();
+      recordIfSigned(o);
+      return o;
+    }) : await decide();
+    recordIfSigned(outcome);
     if (outcome.usedWorldApproval) approvals.delete(proposal.id);
     entry.proposal = outcome.proposal;
     entry.lastOutcome = outcome;
     entry.pending = outcome.decision === "PENDING_CHALLENGE" && outcome.challengeUntil ? { until: outcome.challengeUntil, epoch: store.epoch(), challenged: false, reason: null } : null;
+    if (outcome.decision === "PENDING_VOTE" && outcome.vote) {
+      entry.voteEpoch = store.epoch();
+      store.putVote({
+        subject: proposal.id,
+        kind: "proposal",
+        title: entry.proposal.description.purpose,
+        amountTinybars: entry.proposal.transfer.amountTinybars,
+        payee: entry.proposal.transfer.payee,
+        violations: outcome.mandate?.violations ?? [],
+        vote: outcome.vote,
+        decision: "PENDING_VOTE",
+        openedAt: clock().toISOString(),
+      });
+    }
     const needsApproval =
       outcome.decision === "REFUSED" && outcome.worldGateReason !== null && outcome.checkMatches;
     res.json(needsApproval ? { ...outcome, approveUrl: `/console.html?proposal=${encodeURIComponent(proposal.id)}` } : outcome);
@@ -345,6 +433,8 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
         scheduledTxId: e.lastOutcome?.scheduledTxId ?? null,
         challengeUntil: e.pending?.until ?? null,
         challenged: e.pending?.challenged ?? false,
+        vote: store.vote(e.proposal.id)?.vote ?? e.lastOutcome?.vote ?? null,
+        mandate: e.lastOutcome?.mandate ? { id: e.lastOutcome.mandate.id, within: e.lastOutcome.mandate.within, violations: e.lastOutcome.mandate.violations } : null,
       })),
     });
   });
@@ -363,19 +453,21 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
       lastOutcome: entry.lastOutcome,
       approval: approval ? { source: approval.source, expiresAt: approval.expiresAt } : null,
       challenge: entry.pending ? { until: entry.pending.until, challenged: entry.pending.challenged, reason: entry.pending.reason, epoch: entry.pending.epoch } : null,
+      vote: store.vote(entry.proposal.id) ?? null,
     });
   });
 
 
   // Audit entries that are not a council decision (challenge, revocation).
-  const auditNote = async (proposalId: string, event: string, detail: string, proposalForHash?: Proposal) => {
+  const auditNote = async (proposalId: string, event: string, detail: string, proposalForHash?: Proposal, extraMeta?: EntryMeta) => {
+    const meta: EntryMeta = { ...(proposalForHash ? { proposalHash: sha256(proposalFingerprint(proposalForHash)) } : {}), ...extraMeta };
     try {
       const r = await agent.hedera.auditEntry({
         proposalId,
         event,
         detail,
         at: clock().toISOString(),
-        ...(proposalForHash ? { meta: { proposalHash: sha256(proposalFingerprint(proposalForHash)) } } : {}),
+        ...(Object.keys(meta).length ? { meta } : {}),
       });
       return { auditTxId: r.txId, auditSeq: r.entry.seq, auditHash: r.entry.hash, auditError: null };
     } catch (err) {
@@ -399,11 +491,19 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
     entry.inflight = new Promise<void>((resolve) => (settle = resolve));
     try {
       const now = clock();
-      const result = await executePending(
-        agent,
-        { outcome: entry.lastOutcome, challengeUntil: entry.pending.until, challenged: entry.pending.challenged, challengeReason: entry.pending.reason, createdEpoch: entry.pending.epoch },
-        { currentEpoch: store.epoch(), approval: approvals.get(entry.proposal.id, now) },
-      );
+      const pending = entry.pending;
+      const prev = entry.lastOutcome;
+      const run = async () => {
+        const r = await executePending(
+          agent,
+          { outcome: prev, challengeUntil: pending.until, challenged: pending.challenged, challengeReason: pending.reason, createdEpoch: pending.epoch },
+          { currentEpoch: store.epoch(), approval: approvals.get(entry.proposal.id, now), mandate: mandateCtx() },
+        );
+        if (r.kind === "done") recordIfSigned(r.outcome);
+        return r;
+      };
+      // Inside-the-instruction payments re-read the monthly spend, so they queue.
+      const result = prev.mandate?.within ? await serialized(run) : await run();
       if (result.kind === "too-early") {
         res.status(425).json({ error: result.reason, secondsRemaining: result.secondsRemaining, challengeUntil: entry.pending.until });
         return;
@@ -524,11 +624,18 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
     // Executions that start after the epoch bump abort on the re-check, so busy entries are skipped.
     const inFlight = [...proposals.values()].filter((e) => e.inflight);
     await Promise.all(inFlight.map((e) => e.inflight));
-    const cancelled = [...proposals.values()].filter((e) => e.pending && e.lastOutcome && !e.busy);
+    const cancelled = [...proposals.values()].filter((e) => (e.pending || e.lastOutcome?.decision === "PENDING_VOTE") && e.lastOutcome && !e.busy);
     for (const e of cancelled) {
       e.pending = null;
       approvals.delete(e.proposal.id);
       e.lastOutcome = { ...e.lastOutcome!, decision: "CANCELLED", reason: `Cancelled: seat ${revoked.seat.seat} was revoked (epoch ${revoked.fromEpoch} -> ${revoked.toEpoch}).`, challengeUntil: null };
+      const v = store.vote(e.proposal.id);
+      if (v) store.putVote({ ...v, decision: "CANCELLED" });
+    }
+    // Open adoption votes were taken over a council that no longer exists.
+    const closedMandates = store.mandates().filter((m) => m.status === "open");
+    for (const m of closedMandates) {
+      store.updateMandate({ ...m, status: "rejected", closedReason: `Closed: seat ${revoked.seat.seat} was revoked (epoch ${revoked.fromEpoch} -> ${revoked.toEpoch}). Draft it again.` });
     }
     const scheduleErrors: string[] = [];
     if (agent.chain?.cancel) {
@@ -544,6 +651,7 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
     }
     const detail =
       `epoch ${revoked.fromEpoch} -> ${revoked.toEpoch}, seat ${revoked.seat.seat} revoked, ${cancelled.length} pending proposals cancelled` +
+      (closedMandates.length ? `, ${closedMandates.length} open instruction votes closed` : "") +
       (scheduleErrors.length ? `, ${scheduleErrors.length} schedule deletions failed` : "");
     const logged = await auditNote("COUNCIL", "REVOKED", detail);
     for (const e of cancelled) {
@@ -555,6 +663,7 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
       by: holder === target.nullifier ? "self" : "another seat holder",
       epoch: revoked.toEpoch,
       cancelledProposals: cancelled.map((e) => e.proposal.id),
+      closedMandateVotes: closedMandates.map((m) => m.id),
       settledBeforeRevocation: inFlight.map((e) => ({ id: e.proposal.id, decision: e.lastOutcome?.decision ?? null })),
       scheduleDeletion: agent.mode === "real" ? (scheduleErrors.length ? { failed: scheduleErrors } : "deleted") : "simulated: recorded only, no Hedera schedule existed",
       detail,
@@ -573,7 +682,15 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
   });
 
   app.get("/policy", (_req, res) => {
-    res.json({ policy, hash: policyHash, auth: authLabel, note: "Every HCS audit entry carries this hash." });
+    const m = store.activeMandate();
+    res.json({
+      policy,
+      hash: policyHash,
+      auth: authLabel,
+      note: "Every HCS audit entry carries this hash.",
+      // Outside the hashed policy: adopting an instruction must not change the policy hash.
+      mandate: m ? { id: m.id, rulesHash: m.rulesHash, textHash: m.textHash, summary: m.summary, adoptedAt: m.adoptedAt ?? null, source: m.source } : null,
+    });
   });
 
   const topicLink = (topicId: string | null) =>
@@ -640,6 +757,8 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
       ...(o.challengeUntil || o.cancelledBy
         ? { challenge: { until: o.challengeUntil, challenged: entry.pending?.challenged ?? false, cancelledBy: o.cancelledBy ?? null } }
         : {}),
+      ...(o.mandate ? { mandate: o.mandate } : {}),
+      ...(o.vote ? { vote: o.vote } : {}),
     };
     res.json({ ...bundle, digest: sha256(canonical(bundle)), digestOf: "sha256 over the canonical JSON of this bundle without the digest field" });
   });
@@ -654,8 +773,29 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
   });
 
   // The action is chosen by the server, never by the client.
-  const actionFor = (body: { proposalId?: unknown; join?: unknown; revoke?: unknown; seat?: unknown }): { action: string; signal?: string } | { error: string; status: number } => {
+  // The fingerprint a ballot on this subject is bound to: a proposal's registered
+  // fingerprint, or a standing instruction's rulesHash.
+  const voteFingerprint = (subject: unknown, kind?: unknown): { fingerprint: string } | { error: string; status: number } => {
+    const id = typeof subject === "string" ? subject : "";
+    const m = store.mandate(id);
+    const p = proposals.get(id);
+    if (kind === "mandate") return m ? { fingerprint: m.rulesHash } : { error: "Unknown standing instruction.", status: 404 };
+    if (kind === "proposal") return p ? { fingerprint: p.fingerprint } : { error: "Unknown proposal.", status: 404 };
+    if (m && p) return { error: `Both a proposal and a standing instruction are called ${id}: give kind "proposal" or "mandate".`, status: 400 };
+    if (m) return { fingerprint: m.rulesHash };
+    if (p) return { fingerprint: p.fingerprint };
+    return { error: "Unknown vote subject. Give a proposal id or a standing instruction id (subject).", status: 404 };
+  };
+
+  const actionFor = (body: { proposalId?: unknown; join?: unknown; revoke?: unknown; seat?: unknown; vote?: unknown; subject?: unknown; choice?: unknown; kind?: unknown }): { action: string; signal?: string } | { error: string; status: number } => {
     if (body.join === true) return { action: JOIN_ACTION, signal: JOIN_SIGNAL };
+    if (body.vote === true) {
+      if (body.choice !== "yes" && body.choice !== "no") return { error: 'choice must be "yes" or "no".', status: 400 };
+      const f = voteFingerprint(body.subject, body.kind);
+      if ("error" in f) return f;
+      // Ballots are proven under the join action so the nullifier matches a seat.
+      return { action: JOIN_ACTION, signal: voteSignal(body.subject as string, f.fingerprint, body.choice) };
+    }
     if (body.revoke === true) {
       const seat = store.seats().find((s) => s.seat === body.seat);
       return seat ? { action: JOIN_ACTION, signal: revokeSignal(seat.seat) } : { error: "No such seat. Give the seat id to revoke (seat).", status: 404 };
@@ -671,7 +811,16 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
       res.status(503).json({ error: "World ID is not configured on this server (WORLD_RP_ID, WORLD_APP_ID, WORLD_SIGNING_KEY)." });
       return;
     }
-    const a = actionFor({ proposalId: req.body?.proposalId, join: req.body?.join, revoke: req.body?.revoke, seat: req.body?.seat });
+    const a = actionFor({
+      proposalId: req.body?.proposalId,
+      join: req.body?.join,
+      revoke: req.body?.revoke,
+      seat: req.body?.seat,
+      vote: req.body?.vote,
+      subject: req.body?.subject,
+      choice: req.body?.choice,
+      kind: req.body?.kind,
+    });
     if ("error" in a) {
       res.status(a.status).json({ error: a.error });
       return;
@@ -735,7 +884,8 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
         res.status(409).json({ joined: false, error: "This person already holds a council seat." });
         return;
       }
-      res.json({ joined: true, seat: seat.seat, proof: "MOCKED Proof of Human (demo only)" });
+      // The stored nullifier lets the browser remember "who am I" in demo mode.
+      res.json({ joined: true, seat: seat.seat, nullifier: seat.nullifier, proof: "MOCKED Proof of Human (demo only)" });
       return;
     }
     if (!worldOn || !body.idkitResult || typeof body.idkitResult !== "object") {
@@ -764,6 +914,217 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
       count: store.seats().length,
       epoch: store.epoch(),
       seats: store.seats().map((s) => ({ seat: s.seat, source: s.source, joinedAt: s.joinedAt, nullifier: `${s.nullifier.slice(0, 10)}…` })),
+    });
+  });
+
+  // ---- standing instructions and council votes (docs/mandate-spec.md) ----
+
+  type BallotAuth = { ok: true; seat: string; source: "world" | "mocked"; choice: "yes" | "no" } | { ok: false; status: number; error: string };
+  // Who is voting: a mocked seat (demo mode only) or a World ID proof under the
+  // join action, bound by its signal to this subject's exact bytes and the choice.
+  const authBallot = async (raw: unknown, subject: string, fingerprint: string): Promise<BallotAuth> => {
+    const b = (raw ?? {}) as { choice?: unknown; mocked?: unknown; byNullifier?: unknown; idkitResult?: unknown };
+    if (b.choice !== "yes" && b.choice !== "no") return { ok: false, status: 400, error: 'choice must be "yes" or "no".' };
+    const choice = b.choice;
+    if (b.mocked === true) {
+      if (!allowMocked) return { ok: false, status: 403, error: "Mocked ballots are disabled: World ID is configured (or this is mainnet)." };
+      const seat = typeof b.byNullifier === "string" ? store.seats().find((s) => s.source === "mocked" && s.nullifier === b.byNullifier) : undefined;
+      return seat ? { ok: true, seat: seat.seat, source: "mocked", choice } : { ok: false, status: 403, error: "Only a current seat holder may vote." };
+    }
+    if (!worldOn || !b.idkitResult || typeof b.idkitResult !== "object") {
+      return { ok: false, status: 400, error: "World ID is not configured, or no idkitResult was supplied." };
+    }
+    let verified;
+    try {
+      verified = await verifyWorldProof(agent.world, b.idkitResult as Record<string, unknown>, JOIN_ACTION, options.worldFetch, voteSignal(subject, fingerprint, choice));
+    } catch (err) {
+      return { ok: false, status: 502, error: `World ID verification is unavailable: ${err instanceof Error ? err.message : String(err)}` };
+    }
+    if (!verified.ok || !verified.nullifier) return { ok: false, status: 403, error: verified.detail };
+    const seat = store.seats().find((s) => s.source === "world" && s.nullifier === verified.nullifier);
+    return seat ? { ok: true, seat: seat.seat, source: "world", choice } : { ok: false, status: 403, error: "Only a current seat holder may vote." };
+  };
+
+  app.get("/mandate", (_req, res) => {
+    const now = clock();
+    res.json({ active: store.activeMandate(), drafts: store.mandates().reverse(), spentThisMonthTinybars: store.spentThisMonth(now), monthKey: monthKey(now) });
+  });
+
+  app.post("/mandate/draft", auth.require, async (req, res) => {
+    const raw = (req.body as { text?: unknown } | null)?.text;
+    const text = typeof raw === "string" ? raw.trim() : "";
+    if (!text) {
+      res.status(400).json({ error: "text is required: write the standing instruction in plain words." });
+      return;
+    }
+    if (text.length > MAX_MANDATE_TEXT) {
+      res.status(400).json({ error: `text is too long (at most ${MAX_MANDATE_TEXT} characters).` });
+      return;
+    }
+    if (store.seats().length === 0) {
+      res.status(409).json({ error: "Join the council first: a standing instruction is adopted by a council vote." });
+      return;
+    }
+    const compiled = await compileMandate(text, agent.zeroG, options.zeroGFetch);
+    if (!compiled.ok) {
+      res.status(422).json({ error: `The rules could not be compiled: ${compiled.error}.`, requestId: compiled.requestId });
+      return;
+    }
+    const seats = store.seats().map((s) => s.seat);
+    if (seats.length === 0) {
+      res.status(409).json({ error: "Join the council first: a standing instruction is adopted by a council vote." });
+      return;
+    }
+    const draft = store.addMandate({
+      text,
+      rules: compiled.rules,
+      summary: summarize(compiled.rules),
+      source: compiled.source,
+      requestId: compiled.requestId,
+      model: compiled.model,
+      rulesHash: rulesHash(compiled.rules),
+      textHash: sha256(text),
+      createdAt: clock().toISOString(),
+      status: "open",
+      vote: openTally(seats),
+    });
+    await auditNote(
+      draft.id,
+      "MANDATE_PROPOSED",
+      `Standing instruction ${draft.id} proposed, compiled by ${draft.source === "0g" ? `0G (request ${draft.requestId ?? "none"})` : "the SIMULATED parser"}. Council vote opened: ${draft.vote.needed} of ${seats.length} needed.`,
+      undefined,
+      { rulesHash: draft.rulesHash, textHash: draft.textHash, ...(draft.requestId ? { zeroGRequestId: draft.requestId.slice(0, 80) } : {}) },
+    );
+    res.status(201).json(draft);
+  });
+
+  app.post("/mandate/:id/vote", auth.require, async (req, res) => {
+    const id = String(req.params.id);
+    const before = store.mandate(id);
+    if (!before) {
+      res.status(404).json({ error: "Unknown standing instruction." });
+      return;
+    }
+    if (before.status !== "open") {
+      res.status(409).json({ error: `Standing instruction ${id} is ${before.status}; its vote is closed.` });
+      return;
+    }
+    const who = await authBallot(req.body, id, before.rulesHash);
+    if (!who.ok) {
+      res.status(who.status).json({ recorded: false, error: who.error });
+      return;
+    }
+    // Re-read after the await: another ballot may have closed the vote meanwhile.
+    const m = store.mandate(id)!;
+    if (m.status !== "open") {
+      res.status(409).json({ recorded: false, error: `Standing instruction ${id} is ${m.status}; its vote is closed.` });
+      return;
+    }
+    const cast = castBallot(m.vote, { seat: who.seat, choice: who.choice, at: clock().toISOString(), source: who.source }, id);
+    if (!cast.ok) {
+      res.status(cast.status).json({ recorded: false, error: cast.error });
+      return;
+    }
+    const vote = cast.tally;
+    let superseded: MandateDraft | null = null;
+    if (vote.status === "passed") {
+      store.updateMandate({ ...m, vote });
+      superseded = store.adoptMandate(id, clock().toISOString())!.superseded;
+    } else if (vote.status === "failed") {
+      store.updateMandate({ ...m, vote, status: "rejected", closedReason: "The council voted it down." });
+    } else store.updateMandate({ ...m, vote });
+    await auditNote(id, "VOTE", ballotDetail(who.seat, who.choice, id, vote), undefined, { rulesHash: m.rulesHash });
+    if (vote.status === "passed") {
+      const logged = await auditNote(
+        id,
+        "MANDATE_ADOPTED",
+        `Standing instruction ${id} adopted by the council (${vote.yes} of ${vote.eligible.length}, ${vote.needed} needed)${superseded ? `, supersedes ${superseded.id}` : ""}. ${m.summary.join(". ")}.`,
+        undefined,
+        { rulesHash: m.rulesHash, textHash: m.textHash },
+      );
+      const adopted = store.mandate(id)!;
+      store.updateMandate({ ...adopted, adoptedAudit: { auditSeq: logged.auditSeq, auditHash: logged.auditHash, auditTxId: logged.auditTxId } });
+    } else if (vote.status === "failed") {
+      await auditNote(id, "MANDATE_REJECTED", `Standing instruction ${id} rejected by the council (${vote.no} no of ${vote.eligible.length}).`, undefined, { rulesHash: m.rulesHash });
+    }
+    res.json({ recorded: true, vote, mandate: store.mandate(id) });
+  });
+
+  app.post("/proposals/:id/vote", auth.require, async (req, res) => {
+    const id = String(req.params.id);
+    const entry = proposals.get(id);
+    if (!entry || !entry.lastOutcome) {
+      res.status(404).json({ error: "Unknown proposal. Submit it to POST /proposals first." });
+      return;
+    }
+    const waiting = () => entry.lastOutcome?.decision === "PENDING_VOTE" && !entry.busy && store.vote(id)?.vote.status === "open";
+    if (!waiting()) {
+      res.status(409).json({ error: `Proposal ${id} is not waiting for a council vote (decision: ${entry.lastOutcome.decision}).` });
+      return;
+    }
+    const who = await authBallot(req.body, id, entry.fingerprint);
+    if (!who.ok) {
+      res.status(who.status).json({ recorded: false, error: who.error });
+      return;
+    }
+    if (!waiting()) {
+      res.status(409).json({ recorded: false, error: `Proposal ${id} is not waiting for a council vote (decision: ${entry.lastOutcome.decision}).` });
+      return;
+    }
+    const item = store.vote(id)!;
+    const cast = castBallot(item.vote, { seat: who.seat, choice: who.choice, at: clock().toISOString(), source: who.source }, id);
+    if (!cast.ok) {
+      res.status(cast.status).json({ recorded: false, error: cast.error });
+      return;
+    }
+    const vote = cast.tally;
+    store.putVote({ ...item, vote });
+    entry.lastOutcome = { ...entry.lastOutcome, vote };
+    if (vote.status === "open") {
+      await auditNote(id, "VOTE", ballotDetail(who.seat, who.choice, id, vote), entry.proposal);
+      res.json({ recorded: true, vote, outcome: entry.lastOutcome });
+      return;
+    }
+    // The vote just closed. Claim the entry before any await, so a second
+    // closing ballot or an execute cannot resolve it twice.
+    entry.busy = true;
+    let settle!: () => void;
+    entry.inflight = new Promise<void>((resolve) => (settle = resolve));
+    try {
+      await auditNote(id, "VOTE", ballotDetail(who.seat, who.choice, id, vote), entry.proposal);
+      const outcome = await resolveVote(agent, entry.lastOutcome, vote, { createdEpoch: entry.voteEpoch ?? store.epoch(), currentEpoch: store.epoch() });
+      recordIfSigned(outcome);
+      entry.proposal = outcome.proposal;
+      entry.lastOutcome = outcome;
+      entry.pending = outcome.decision === "PENDING_CHALLENGE" && outcome.challengeUntil ? { until: outcome.challengeUntil, epoch: store.epoch(), challenged: false, reason: null } : null;
+      store.putVote({ ...store.vote(id)!, vote, decision: outcome.decision });
+      res.json({ recorded: true, vote, outcome });
+    } finally {
+      entry.busy = false;
+      entry.inflight = undefined;
+      settle();
+    }
+  });
+
+  app.get("/council/votes", (_req, res) => {
+    const { items, isOpen } = allVotes();
+    res.json({ open: items.filter(isOpen), closed: items.filter((i) => !isOpen(i)) });
+  });
+
+  // Public: a council's votes are public. Nullifiers are not shown.
+  app.get("/council/members/:seat", (req, res) => {
+    const seat = store.seats().find((s) => s.seat === String(req.params.seat));
+    if (!seat) {
+      res.status(404).json({ error: "No such seat." });
+      return;
+    }
+    const { items, isOpen } = allVotes();
+    res.json({
+      seat: seat.seat,
+      source: seat.source,
+      joinedAt: seat.joinedAt,
+      ballots: items.flatMap((i) => i.vote.ballots.filter((b) => b.seat === seat.seat).map((b) => ({ subject: i.subject, kind: i.kind, choice: b.choice, at: b.at }))),
+      awaiting: items.filter((i) => isOpen(i) && i.vote.eligible.includes(seat.seat) && !i.vote.ballots.some((b) => b.seat === seat.seat)),
     });
   });
 

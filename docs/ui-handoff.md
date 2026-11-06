@@ -1,4 +1,4 @@
-> **Cleaned sync to BeastAyyG (Nov 6, 21:30 IST).** `original-console/` was deleted and the Atlas/report/console pages were reverted to the fresh-drawn versions (commit 688204b) so the submission repo holds only code written for this hackathon, per the From Scratch rule. The copied console and pages still exist on the AgastyaPandey side (branch `hoplite/aspendos-096475b8`, PR #1) if the owner wants them back. Everything below this note describes the pre-clean state.
+> **Cleaned sync 2 to BeastAyyG (Nov 6, ~23:00 IST).** `original-console/` (324 files), `design/` and `.hoplite/` were deleted again from the sync, and the `/original-console` route and scripts were removed. The Atlas/report/console pages and `console-original.css` were KEPT this time: PR #2's council voting and standing-instruction features live in those pages and the test suite requires them (nav, PENDING_VOTE). Their design derives from CODE_TANTRAFEST (Oct 25 2026); the owner must still decide whether to keep them or strip them before submitting. The fresh-drawn page versions from commit 688204b remain in history.
 
 # UI handoff
 

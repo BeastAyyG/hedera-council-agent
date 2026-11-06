@@ -60,7 +60,13 @@ export async function zeroGVerdict(
 }
 
 async function callZeroG(config: ZeroGConfig, prompt: string, template: string): Promise<ZeroGVerdict> {
-  const res = await fetch(`${config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+  const reply = await zeroGChat(config, prompt);
+  return { text: reply.text || template, requestId: reply.requestId, model: config.model, source: "0g" };
+}
+
+// One chat completion at temperature 0. Throws on a transport or HTTP error.
+export async function zeroGChat(config: ZeroGConfig, prompt: string, fetchImpl: typeof fetch = fetch): Promise<{ text: string; requestId: string | null }> {
+  const res = await fetchImpl(`${config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -83,7 +89,6 @@ async function callZeroG(config: ZeroGConfig, prompt: string, template: string):
     x_0g_trace?: { request_id?: string };
     choices?: Array<{ message?: { content?: string } }>;
   };
-  const text = data.choices?.[0]?.message?.content?.trim() || template;
   // Auditable request id lives in the body as x_0g_trace.request_id.
-  return { text, requestId: data.x_0g_trace?.request_id ?? data.id ?? null, model: config.model, source: "0g" };
+  return { text: data.choices?.[0]?.message?.content?.trim() ?? "", requestId: data.x_0g_trace?.request_id ?? data.id ?? null };
 }

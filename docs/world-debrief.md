@@ -17,6 +17,7 @@ TODO: the single change that would help the next builder most.
 ## What was verified
 - Backend verify: POST https://developer.world.org/api/v4/verify/{rp_id}
 - Checks: success, action `council-sign:<proposalId>`, environment, results[0].success
+- Council join, revocation and every council ballot use one action, `join-council` (nullifiers are per action, so this is the only way a ballot's nullifier matches a seat). The signal tells them apart: `council-join`, `council-revoke:<seat>`, `council-vote:<subject>:<hash>:<choice>`. This was tested against a fake verifier only. Not yet confirmed: whether the Developer Portal action must be configured to allow more than one verification per person (it needs to be).
 - An unvalidated client response is never treated as authorization.
 - Proofs are mocked by World for this event; no sandbox app is needed for the demo wiring.
 

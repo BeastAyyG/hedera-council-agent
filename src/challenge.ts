@@ -22,6 +22,9 @@ export interface RecheckInput {
   createdEpoch: number;
   currentEpoch: number;
   now: Date;
+  // Set when a council vote or the adopted standing instruction is the human
+  // approval: the per-payment World ID check does not apply.
+  approvedBy?: string | null;
 }
 
 export type Recheck =
@@ -54,7 +57,9 @@ export function recheckAtExecution(i: RecheckInput): Recheck {
   }
   const large = isLargeProposal(i.proposal, i.largeThresholdTinybars);
   let worldReason: string | null = null;
-  if (large) {
+  if (large && i.approvedBy) {
+    worldReason = `Large proposal approved by ${i.approvedBy}; no per-payment World ID check.`;
+  } else if (large) {
     if (!i.approval) return { status: "aborted", reason: EXPIRED_IN_WINDOW };
     const gate = worldGate(i.approval, i.proposal.id, i.now);
     if (!gate.allowed) return { status: "aborted", reason: /expired/.test(gate.reason) ? EXPIRED_IN_WINDOW : gate.reason };

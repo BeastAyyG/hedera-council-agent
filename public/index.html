@@ -1,102 +1,1566 @@
 <!doctype html>
-<html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Council Agent · Atlas</title><link rel="icon" href="data:,">
-<link rel="stylesheet" href="/assets/theme.css">
-</head><body data-page="atlas" data-state="loading">
-<div class="frame">
-  <aside class="vrail"><span>Atlas</span></aside>
-  <div class="stage">
-    <header class="top" id="top"></header>
-    <main>
-      <div class="atlas">
-        <figure style="margin:0">
-          <!-- ATLAS SCENE: one island per proposal, the treasury in the middle. Islands carry data-proposal, data-decision, data-large. -->
-          <svg class="scene" id="scene" viewBox="40 60 720 370" role="img" aria-label="The council treasury and its proposals as islands"></svg>
-          <div class="timeline"><span id="tl-label">0 / 0 signed</span><span class="track"><span class="fill" id="tl-fill"></span></span><span id="tl-right"></span></div>
-          <figcaption class="figcap" style="margin-top:8px">Fig. 01 · the council, generated in code</figcaption>
-        </figure>
-        <section>
-          <h1 class="shout lg">A council is not<br>a signature.<br>It is a check.</h1>
-          <p class="prose">One agent holds one seat on a Hedera treasury council. Every proposal is a transfer plus a description of it. The agent pays for a check, reads the real transfer back from the chain, and signs only when the two agree. Large ones wait for its owner's fresh World ID.</p>
-          <ul class="legend">
-            <li><i class="sq green"></i>Signed</li>
-            <li><i class="sq red"></i>Refused</li>
-            <li><i class="sq ink"></i>Not yet submitted</li>
-            <li><i class="sq blue"></i>Large · World ID gate</li>
-          </ul>
-          <p class="prose" style="margin-top:12px;font-size:9px;color:var(--ink-3)">Click an island to open its report. Submit new proposals in the console.</p>
-        </section>
-      </div>
-    </main>
-    <div class="ticker" id="ticker"></div>
-    <section class="cols4" id="cols"></section>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="icon" href="data:," />
+<link rel="stylesheet" href="/assets/motion.css" />
+<link rel="stylesheet" href="/assets/council-scene.css" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="The Council — one agent, one signing seat on a Hedera treasury council, drawn as islands." />
+<meta name="color-scheme" content="light" />
+<meta name="theme-color" content="#f2efe7" />
+<title>The Council — Atlas</title>
+<style>
+  :root{
+    --paper:#f2efe7; --ink:#111110; --red:#e23b28;
+    --muted:#8b857a; --hair:#d8d3c6; --ghost:#ffffff;
+    --quiet:#68635b; --red-ink:#b62c1e;
+    --mx:0; --my:0;
+    color-scheme:light;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;max-width:100%;}
+  body{background:var(--paper);color:var(--ink);
+    font-family:"Helvetica Neue",Helvetica,Arial,system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden;}
+  .label{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    font-size:9.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--quiet);
+    transition:color .25s ease;}
+  .sheet{position:relative;min-height:100vh;max-width:100%;padding:32px 46px 26px 92px;
+    display:flex;flex-direction:column;}
+  .topbar>*,.hero>*,.scene,.scene-in,.col,.handoff-inner{min-width:0;}
+  a,summary,button,input{ -webkit-tap-highlight-color:transparent; }
+  a:focus-visible,summary:focus-visible,button:focus-visible,input:focus-visible,[role="button"]:focus-visible{
+    outline:2px solid var(--red);outline-offset:5px;}
+  ::selection{background:var(--red);color:var(--paper);}
+
+  /* curtain: the whole first-load score resolves in under 1.6s */
+  .curtain{position:fixed;inset:0;z-index:90;background:var(--red);
+    display:grid;place-items:center;pointer-events:none;
+    animation:wipe .64s cubic-bezier(.77,0,.18,1) .08s forwards;}
+  .curtain-mark{color:var(--paper);font-size:clamp(18px,2.8vw,38px);font-weight:700;
+    letter-spacing:.32em;text-indent:.32em;animation:mark .3s ease both;}
+  @keyframes wipe{to{transform:translateY(-101%);}}
+  @keyframes mark{from{opacity:0;letter-spacing:.46em;}to{opacity:1;letter-spacing:.32em;}}
+  .grain{position:fixed;inset:-40px;z-index:80;pointer-events:none;opacity:.05;transform:translateZ(0);
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");}
+
+  /* rails */
+  .rail{position:absolute;left:24px;top:32px;bottom:26px;width:44px;
+    display:flex;flex-direction:column;align-items:center;z-index:4;}
+  .wordmark{writing-mode:vertical-rl;transform:rotate(180deg);font-size:14px;font-weight:700;letter-spacing:.3em;
+    animation:fade .36s ease .12s both;}
+  .rail-rule{width:1px;flex:1;background:var(--hair);margin:14px 0;transform-origin:top;
+    animation:grow .55s cubic-bezier(.77,0,.18,1) .18s both;}
+  @keyframes grow{from{transform:scaleY(0);}to{transform:scaleY(1);}}
+  .rail-meta{writing-mode:vertical-rl;transform:rotate(180deg);
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:8px;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--quiet);animation:fade .36s ease .22s both;}
+  .rail-r{position:absolute;right:22px;top:32px;bottom:26px;width:44px;
+    display:flex;flex-direction:column;align-items:center;gap:16px;z-index:4;}
+  .rail-r .dot{width:7px;height:7px;border-radius:50%;background:var(--red);
+    animation:pulse 2.4s ease-in-out 2.2s infinite;}
+  .rail-r .est{writing-mode:vertical-rl;transform:rotate(180deg);
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:8px;letter-spacing:.24em;
+    text-transform:uppercase;color:var(--muted);}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.25;}}
+
+  /* top */
+  .topbar{display:grid;grid-template-columns:1fr .9fr 1.1fr .7fr;gap:20px;align-items:start;
+    animation:fade .45s ease .18s both;}
+  .menu a{display:block;font-size:10.5px;line-height:1.78;letter-spacing:.07em;
+    text-transform:uppercase;color:var(--ink);text-decoration:none;position:relative;width:max-content;}
+  .menu a::before{content:"";position:absolute;left:-14px;top:calc(50% - .5px);
+    width:0;height:1px;background:var(--red);transition:width .3s ease;}
+  .menu a:hover{color:var(--red-ink);}
+  .menu a:hover::before{width:10px;}
+  .menu-title{margin-bottom:7px;}
+  .topval{margin:6px 0 0;font-family:ui-monospace,Menlo,Consolas,monospace;
+    font-size:10.5px;letter-spacing:.05em;display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
+  .topval .live{width:6px;height:6px;border-radius:50%;background:var(--red);flex:0 0 auto;
+    animation:pulse 2.4s ease-in-out 2.2s infinite;}
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:3px 7px;border:1px solid var(--hair);
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:8.5px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--quiet);}
+  .chip.on{color:var(--red-ink);border-color:#e9a79c;}
+  .right{text-align:right;}
+  .right .topval{justify-content:flex-end;}
+  @keyframes fade{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:none;}}
+
+  /* hero */
+  .hero{position:relative;flex:1;display:grid;
+    grid-template-columns:minmax(0,1.6fr) minmax(250px,.78fr);
+    align-items:center;gap:26px;padding:20px 0 10px;}
+  .scene{position:relative;transform:translate(calc(var(--mx)*8px),calc(var(--my)*5px));}
+  .scene-in{position:relative;animation:fade .55s ease .40s both;width:100%;}
+  #atlas{width:100%;height:auto;display:block;transition:filter .35s linear;}
+  /* Percent coordinates share the SVG's 760 × 430 frame, including on resize. */
+  .atlas-courier{position:absolute;left:50%;top:50%;width:clamp(24px,5.3%,40px);
+    transform:translate(-50%,-88%);pointer-events:none;z-index:2;}
+  .atlas-courier .council-pet{display:block;width:100%;height:auto;}
+  .atlas-courier .council-pet>svg{display:block;width:100%;height:auto;}
+  .journey-caption{margin:0 0 10px;min-height:3.6em;font-size:11px;line-height:1.6;color:#3f3b34;}
+  .journey-caption .label{color:var(--red-ink);margin-right:6px;}
+  .journey-outcome{display:block;color:var(--quiet);overflow-wrap:anywhere;}
+  .journey-beats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 12px;
+    list-style:none;margin:0;padding:12px 0 0;}
+  .journey-beats .row{min-height:48px;margin:0;gap:8px;line-height:1.4;letter-spacing:.045em;}
+  .journey-beats svg{width:28px;height:28px;flex:none;shape-rendering:crispEdges;}
+  .journey-beats small{display:block;text-transform:none;letter-spacing:0;color:var(--quiet);font-size:10px;}
+  .journey-beats li{border-bottom:1px solid transparent;}
+  .journey-beats li[data-active="true"]{border-color:var(--red);}
+  .journey-beats li[data-active="true"] .row{color:var(--red-ink);}
+  .scene[data-motion-paused="true"] #atlas *,
+  .scene[data-motion-paused="true"] .atlas-courier *,
+  .atlas-motion-paused .ticker-track,.atlas-motion-paused .live,.atlas-motion-paused .rail-r .dot{
+    animation-play-state:paused !important;}
+  .controls #journeyReplay{width:auto;flex:0 0 auto;padding:0 8px;font:9px ui-monospace,Menlo,monospace;
+    text-transform:uppercase;letter-spacing:.07em;}
+  .controls button:focus-visible{outline:2px solid var(--red);outline-offset:4px;}
+  .controls button:disabled{cursor:default;opacity:.45;}
+
+  .lede{margin:0 0 16px;font-size:clamp(19px,1.45vw,20px);line-height:1.16;font-weight:700;
+    letter-spacing:-.01em;text-transform:uppercase;color:var(--red);}
+  .lede .l{display:block;overflow:hidden;}
+  .lede .l>span{display:block;transform:translateY(112%);
+    animation:rise .55s cubic-bezier(.2,.75,.2,1) both;}
+  @keyframes rise{to{transform:translateY(0);}}
+  .body{margin:0 0 18px;font-size:11.5px;line-height:1.62;color:#3f3b34;max-width:34ch;
+    animation:fade .45s ease .55s both;}
+  .legend{border-top:1px solid var(--hair);padding-top:12px;animation:fade .45s ease .68s both;}
+  .legend .row{display:flex;align-items:center;gap:9px;margin-bottom:6px;
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:9px;letter-spacing:.1em;
+    text-transform:uppercase;color:#3f3b34;}
+  .sw{width:9px;height:9px;flex:0 0 auto;}
+  .legend .note{margin-top:9px;font-family:ui-monospace,Menlo,Consolas,monospace;
+    font-size:9px;letter-spacing:.035em;color:var(--quiet);line-height:1.6;}
+  .legend button.row{width:100%;padding:0;border:0;background:none;text-align:left;}
+
+  /* controls */
+  .controls{display:flex;align-items:center;gap:14px;margin-top:10px;padding-top:8px;
+    border-top:1px solid var(--hair);animation:fade .42s ease .82s both;}
+  .controls button{all:unset;cursor:pointer;width:26px;height:26px;flex:0 0 26px;display:grid;place-items:center;
+    border:1px solid var(--hair);color:var(--ink);font-size:9px;transition:color .2s,border-color .2s,background .2s;}
+  .controls button:hover{border-color:var(--red);color:var(--red-ink);}
+  #scrub{-webkit-appearance:none;appearance:none;flex:1;min-width:72px;height:24px;background:transparent;
+    cursor:pointer;}
+  #scrub::-webkit-slider-runnable-track{height:1px;background:var(--hair);}
+  #scrub::-webkit-slider-thumb{-webkit-appearance:none;width:9px;height:9px;margin-top:-4px;border-radius:50%;
+    background:var(--red);cursor:pointer;transition:transform .18s;}
+  #scrub::-moz-range-track{height:1px;background:var(--hair);}
+  #scrub::-moz-range-thumb{width:9px;height:9px;border:none;border-radius:50%;background:var(--red);}
+  .controls .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:9px;
+    letter-spacing:.09em;text-transform:uppercase;color:var(--quiet);white-space:nowrap;}
+  #state{color:var(--ink);padding:2px 4px;margin:-2px -4px;}
+  .controls.is-scrubbing #state{color:var(--red-ink);}
+  .controls.is-scrubbing #scrub::-webkit-slider-thumb{transform:scale(1.55);}
+  .controls.is-scrubbing #scrub::-moz-range-thumb{transform:scale(1.55);}
+
+  /* atlas states */
+  #atlas .cell{transform-box:fill-box;transform-origin:center;shape-rendering:crispEdges;
+    animation:pop .36s cubic-bezier(.2,1.4,.4,1) both;}
+  @keyframes pop{from{transform:scale(0);}to{transform:scale(1);}}
+  #atlas .sprite{animation:spriteIn .65s ease both;}
+  @keyframes spriteIn{from{opacity:0;}to{opacity:1;}}
+  #atlas .island{transition:opacity .9s ease, filter .9s ease;}
+  #atlas .island.degraded{opacity:.82;filter:saturate(.55);}
+  #atlas .island.dark{opacity:.42;filter:saturate(.08);}
+  #atlas .beam{transform-box:fill-box;transform-origin:0% 100%;
+    animation:sweep 9s ease-in-out infinite alternate;}
+  @keyframes sweep{from{transform:rotate(-52deg);opacity:.05;}to{transform:rotate(52deg);opacity:.16;}}
+  #atlas .island.dark .beam{animation-play-state:paused;opacity:0;}
+  #atlas .block{transform-box:fill-box;transform-origin:center;
+    animation:chain 7s ease-in-out infinite;}
+  @keyframes chain{0%{opacity:0;transform:translateY(5px) scale(.6);}
+    12%{opacity:1;transform:none;}82%{opacity:1;transform:none;}
+    100%{opacity:0;transform:translateY(-3px);}}
+  #atlas .island.dark .block{animation-play-state:paused;opacity:.2;}
+  #atlas .packet{animation:cross 4.4s linear infinite;}
+  @keyframes cross{from{opacity:0;}8%{opacity:1;}92%{opacity:1;}to{opacity:0;}}
+  #atlas .cloud{animation:drift 30s ease-in-out infinite alternate;}
+  @keyframes drift{from{transform:translateX(-20px);}to{transform:translateX(28px);}}
+  #atlas .ripple{transform-box:fill-box;transform-origin:center;
+    animation:ripple 4.6s ease-out infinite;}
+  @keyframes ripple{0%{transform:scale(.35);opacity:.55;}100%{transform:scale(2.1);opacity:0;}}
+  #atlas .shimmer{animation:shimmer 3.6s steps(2,end) infinite;}
+  @keyframes shimmer{0%,100%{opacity:.4;}50%{opacity:.95;}}
+  #atlas .boat{animation:bob 13s ease-in-out infinite alternate;}
+  @keyframes bob{from{transform:translateX(-16px);}to{transform:translateX(26px);}}
+  #atlas .twinkle{animation:twinkle 3.4s ease-in-out infinite, driftY 8s ease-in-out infinite alternate;}
+  @keyframes twinkle{0%,100%{opacity:.12;}50%{opacity:1;}}
+  @keyframes driftY{from{transform:translate(0,0);}to{transform:translate(5px,-8px);}}
+  #atlas .bridge-dash{animation:dash 1.6s linear infinite;}
+  @keyframes dash{to{stroke-dashoffset:-16;}}
+
+  /* ---- life layer ---- */
+  #atlas .walker{animation:walkX 12s ease-in-out infinite alternate;}
+  @keyframes walkX{from{transform:translateX(-12px);}to{transform:translateX(14px);}}
+  #atlas .legA{animation:stepA .7s steps(2,end) infinite;}
+  #atlas .legB{animation:stepB .7s steps(2,end) infinite;}
+  @keyframes stepA{0%,100%{transform:translateY(0);}50%{transform:translateY(-2px);}}
+  @keyframes stepB{0%,100%{transform:translateY(-2px);}50%{transform:translateY(0);}}
+  #atlas .bell{transform-box:fill-box;transform-origin:50% 100%;
+    animation:sway 3.6s ease-in-out infinite alternate;}
+  @keyframes sway{from{transform:rotate(-3deg);}to{transform:rotate(3deg);}}
+  #atlas .tree{transform-box:fill-box;transform-origin:50% 100%;
+    animation:treeSway 4.8s ease-in-out infinite alternate;}
+  @keyframes treeSway{from{transform:rotate(-1.4deg);}to{transform:rotate(1.4deg);}}
+  #atlas .puff{animation:puffUp 3s ease-out infinite;}
+  @keyframes puffUp{0%{transform:translate(0,0);opacity:0;}18%{opacity:.85;}
+    100%{transform:translate(-9px,-44px);opacity:0;}}
+  #atlas .fly{animation:flyAcross 26s linear infinite;}
+  @keyframes flyAcross{from{transform:translate(-40px,0);}to{transform:translate(700px,-26px);}}
+  #atlas .wing{transform-box:fill-box;transform-origin:50% 100%;
+    animation:wingFlap .42s ease-in-out infinite alternate;}
+  @keyframes wingFlap{from{transform:scaleY(1);}to{transform:scaleY(.4);}}
+  #atlas .fish{animation:leap 6.5s ease-out infinite;}
+  @keyframes leap{0%{opacity:0;transform:translateY(0);}
+    6%{opacity:.95;transform:translateY(-8px);}
+    14%{opacity:0;transform:translateY(-1px);}
+    100%{opacity:0;transform:translateY(0);}}
+  #atlas .flag{transform-box:fill-box;transform-origin:0% 100%;
+    animation:flagSway 2.6s ease-in-out infinite alternate;}
+  @keyframes flagSway{from{transform:skewY(-2.5deg) scaleX(1);}
+    to{transform:skewY(2.5deg) scaleX(.92);}}
+  #atlas .wake{animation:wake 13s ease-in-out infinite alternate;}
+  @keyframes wake{from{transform:translateX(-16px);opacity:.5;}
+    to{transform:translateX(26px);opacity:.15;}}
+
+  /* link states */
+  #atlas .link{transition:opacity .6s ease;}
+  #atlas .link .deck{transition:stroke .5s ease,stroke-width .35s ease;animation:bridgeIn .42s ease backwards;}
+  @keyframes bridgeIn{from{opacity:0;}to{opacity:1;}}
+  #atlas .link.changed .deck{stroke:var(--red);stroke-width:5;}
+  #atlas .link.idle{opacity:.35;}
+  #atlas .link.idle .packet{display:none;}
+  #atlas .link.severed .deck{stroke:var(--red);stroke-dasharray:4 9;}
+  #atlas .link.severed .packet{display:none;}
+  #atlas .link.severed .bridge-dash{animation-play-state:paused;opacity:0;}
+  #atlas .queue{opacity:0;}
+  #atlas .link.severed .queue{opacity:1;animation:queueIn .5s ease both;}
+  @keyframes queueIn{from{opacity:0;transform:translateX(-6px);}to{opacity:1;transform:none;}}
+  #atlas .island.decision-pass .ring,#atlas .island.decision-fail .ring,
+  #atlas .island.proposal-in .ring{animation:decisionRing .85s ease-out;}
+  @keyframes decisionRing{0%{opacity:0;transform:scale(.82);}35%{opacity:.95;}100%{opacity:0;transform:scale(1.16);}}
+  #atlas .link.decision-fail .deck{stroke:var(--red);stroke-width:6;}
+  #atlas .proposal-arrival{opacity:0;pointer-events:none;}
+  #atlas .proposal-arrival.arrived{opacity:1;}
+  #atlas .proposal-arrival.arrived .proposal-packet{animation:proposalArrive .8s cubic-bezier(.2,1.35,.35,1) both;}
+  @keyframes proposalArrive{from{opacity:0;transform:translateY(-22px) scale(.55);}to{opacity:1;transform:none;}}
+  #state.decision-pass{color:#2f7736;}
+  #state.decision-fail{color:var(--red-ink);}
+  #toast b{color:var(--red-ink);}
+  #toast.pass b{color:#2f7736;}
+
+  /* ---- site-wide motion ---- */
+  .ticker{overflow:hidden;border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);
+    padding:7px 0;margin:4px 0 2px;animation:fade .42s ease .98s both;}
+  .ticker-track{display:flex;width:max-content;animation:marquee 38s linear infinite;}
+  .ticker:hover .ticker-track,.ticker:focus-within .ticker-track{animation-play-state:paused;}
+  .ticker-track span{display:block;flex:none;padding-right:2.5em;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:9px;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--quiet);white-space:nowrap;}
+  @keyframes marquee{from{transform:translateX(0);}to{transform:translateX(-50%);}}
+
+  .progress{height:1px;background:var(--hair);margin-top:12px;position:relative;}
+  .progress span{display:block;height:1px;width:0;background:var(--red);
+    transition:width .12s linear;}
+
+  .controls{margin-top:8px;}
+  .bump{display:inline-block;animation:bump .38s ease;}
+  @keyframes bump{0%{transform:scale(1);}45%{transform:scale(1.2);color:var(--red);}
+    100%{transform:scale(1);}}
+  .topval .live.flash{animation:dotFlash .55s ease;}
+  @keyframes dotFlash{0%{box-shadow:0 0 0 0 rgba(226,59,40,.55);}
+    100%{box-shadow:0 0 0 11px rgba(226,59,40,0);}}
+
+  #atlas .ring{transition:opacity .35s ease;transform-box:fill-box;transform-origin:center;}
+  #atlas .island.spot .ring{opacity:.8;}
+  #atlas .island.spot{filter:saturate(1.25) brightness(1.05);}
+  .legend .row{cursor:default;transition:color .2s ease,transform .2s ease;}
+  .legend .row[data-island]:hover,.legend .row[data-island]:focus-visible{color:var(--red-ink);transform:translateX(3px);}
+
+  /* ---- attack surface ---- */
+  .controls button.on{color:var(--red);border-color:var(--red);background:rgba(226,59,40,.06);}
+  #atlas .burst-in{opacity:0;transform-box:fill-box;transform-origin:center;}
+  .attack .link .deck{stroke:#d9c6be;}
+  .attack .link.idle .deck{stroke:#e9d7d1;stroke-dasharray:2 6;opacity:.7;}
+  .attack .link:not(.severed) .bridge-dash{opacity:.2;}
+  .attack .link.severed .deck{stroke:var(--red);stroke-width:4;}
+  .attack .link.severed .bridge-dash{animation-play-state:running;opacity:.9;}
+  .attack .link.severed .burst-in{opacity:1;animation:burst 1.5s ease-out infinite;}
+  @keyframes burst{0%{transform:scale(.5);opacity:.9;}70%{opacity:.3;}100%{transform:scale(1.8);opacity:0;}}
+  .attack .island.degraded{filter:saturate(.5) hue-rotate(-6deg);}
+  .attack .island.dark{filter:saturate(.06) hue-rotate(-10deg);}
+
+  /* ---- inspect panel ---- */
+  .panel{position:fixed;top:0;right:0;bottom:0;width:300px;max-width:84vw;background:var(--paper);
+    border-left:1px solid var(--hair);padding:30px 26px;z-index:96;transform:translateX(106%);
+    transition:transform .42s cubic-bezier(.77,0,.18,1);box-shadow:-14px 0 44px rgba(17,17,16,.10);}
+  .panel.open{transform:none;}
+  .panel-close{position:absolute;top:12px;right:16px;all:unset;cursor:pointer;font-size:22px;line-height:1;color:var(--quiet);}
+  .panel-close:hover{color:var(--red);}
+  .panel h2{margin:4px 0 18px;font-size:22px;font-weight:700;letter-spacing:-.01em;}
+  .panel dl{display:grid;grid-template-columns:auto 1fr;gap:9px 14px;margin:0;
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10px;}
+  .panel dt{color:var(--quiet);text-transform:uppercase;letter-spacing:.08em;}
+  .panel dd{margin:0;text-align:right;color:var(--ink);overflow-wrap:anywhere;}
+  .panel .label{color:var(--quiet);}
+  .panel-note-txt{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:9.5px;line-height:1.6;
+    color:#3f3b34;margin:6px 0 0;}
+  .panel .bar{height:3px;background:var(--hair);position:relative;margin-top:2px;}
+  .panel .bar span{position:absolute;left:0;top:0;bottom:0;background:var(--red);transition:width .4s ease;}
+
+  /* ---- handoff to the editorial ---- */
+  .handoff{position:relative;min-height:100vh;display:flex;flex-direction:column;
+    justify-content:center;padding:0 0 60px;border-top:1px solid var(--hair);}
+  .handoff-inner{max-width:640px;}
+  .handoff .label{margin-bottom:20px;}
+  .handoff-lede{margin:0 0 20px;font-size:clamp(26px,4.4vw,60px);line-height:.98;font-weight:700;
+    letter-spacing:-.02em;text-transform:uppercase;color:var(--red);}
+  .handoff-lede .l{display:block;overflow:hidden;}
+  .handoff-lede .l>span{display:block;transform:translateY(112%);}
+  .handoff.in .handoff-lede .l>span{animation:rise .8s cubic-bezier(.2,.75,.2,1) both;}
+  .handoff.in .handoff-lede .l:nth-child(1)>span{animation-delay:.04s;}
+  .handoff.in .handoff-lede .l:nth-child(2)>span{animation-delay:.12s;}
+  .handoff-body{margin:0 0 28px;font-size:12px;line-height:1.62;color:#3f3b34;max-width:40ch;}
+  .handoff-cta{display:inline-flex;align-items:center;gap:10px;width:max-content;
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10px;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--ink);text-decoration:none;
+    border-bottom:1px solid var(--hair);padding-bottom:7px;
+    transition:color .25s ease,border-color .25s ease;}
+  .handoff-cta:hover{color:var(--red-ink);border-color:var(--red);}
+  .handoff-cta span{transition:transform .3s ease;}
+  .handoff-cta:hover span{transform:translateY(4px);}
+  .handoff-line{position:absolute;left:0;right:0;bottom:40px;height:1px;background:var(--hair);}
+  .handoff-line span{display:block;height:1px;width:0;background:var(--red);transition:width .2s linear;}
+
+  .plate .more{display:inline-flex;align-items:center;gap:5px;margin-left:12px;color:var(--red-ink);}
+  .plate .more i{display:inline-block;font-style:normal;animation:nudge 1.6s ease-in-out infinite;}
+  @keyframes nudge{0%,100%{transform:translateY(0);}50%{transform:translateY(3px);}}
+
+  .handoff-curtain{position:fixed;inset:0;z-index:97;background:var(--red);
+    transform:translateY(101%);transition:transform .62s cubic-bezier(.77,0,.18,1);
+    display:grid;place-items:center;pointer-events:none;}
+  .handoff-curtain.go{transform:translateY(0);}
+  .handoff-curtain .hc-mark{color:var(--paper);font-size:clamp(18px,2.8vw,38px);font-weight:700;
+    letter-spacing:.32em;text-indent:.32em;opacity:0;transition:opacity .3s ease .34s;}
+  .handoff-curtain.go .hc-mark{opacity:1;}
+
+  /* plate + footer */
+  .plate{position:relative;margin:6px 0 0;padding-top:9px;
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:8.5px;letter-spacing:.15em;
+    text-transform:uppercase;color:var(--quiet);text-align:center;animation:fade .4s ease 1s both;}
+  .plate::before{content:"";position:absolute;left:0;right:0;top:0;height:1px;background:var(--hair);
+    transform:scaleX(0);transform-origin:center;animation:ruleIn .55s cubic-bezier(.77,0,.18,1) .86s both;}
+  @keyframes ruleIn{to{transform:scaleX(1);}}
+  .footer{display:grid;grid-template-columns:1.1fr 1fr 1.15fr .8fr;gap:32px;align-items:start;
+    border-top:1px solid var(--hair);padding-top:13px;}
+  .col{animation:fade .4s ease both;}
+  .col:nth-child(1){animation-delay:1.02s;}
+  .col:nth-child(2){animation-delay:1.07s;}
+  .col:nth-child(3){animation-delay:1.12s;}
+  .col:nth-child(4){animation-delay:1.17s;}
+  .col .label{margin-bottom:8px;}
+  .col:hover .label{color:var(--red-ink);}
+  .col p{margin:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:9px;
+    line-height:1.75;color:var(--ink);overflow-wrap:anywhere;}
+  .col p span{color:var(--quiet);transition:color .25s ease;}
+  .col:hover p span{color:var(--ink);}
+  .col p b{font-weight:600;font-variant-numeric:tabular-nums;}
+  .col p a{color:inherit;text-underline-offset:3px;}
+  .tech-details summary{display:flex;align-items:center;justify-content:space-between;gap:12px;
+    list-style:none;cursor:pointer;min-height:15px;}
+  .tech-details summary::-webkit-details-marker{display:none;}
+  .tech-details summary::after{content:"+";color:var(--red);font:12px/1 ui-monospace,Menlo,monospace;}
+  .tech-details[open] summary::after{content:"−";}
+  .tech-details summary .label{margin:0;}
+  .tech-details[open] p{animation:fade .25s ease both;}
+
+  @media (max-width:1080px){
+    .sheet{padding:26px 24px 24px 74px;}
+    .rail-r{display:none;}
+    .topbar{grid-template-columns:1fr 1fr;row-gap:14px;}
+    .hero{grid-template-columns:1fr;gap:18px;}
+    .footer{grid-template-columns:1fr 1fr;row-gap:20px;}
+    .controls{flex-wrap:wrap;gap:10px;}
+    #atlas text{font-size:12px;}
+  }
+  @media (max-width:620px){
+    .sheet{padding:22px 16px 20px 60px;}
+    .rail{left:14px;}
+    .topbar{column-gap:14px;}
+    .hero{padding-top:16px;}
+    .footer{grid-template-columns:1fr;gap:18px;}
+    .controls{gap:9px;}
+    .controls button{width:30px;height:30px;flex-basis:30px;}
+    #scrub{flex:1 1 100px;}
+    #state{flex:1 1 100%;white-space:normal;overflow-wrap:anywhere;}
+    #atlas text{font-size:20px;letter-spacing:.06em;}
+    .plate{line-height:1.6;}
+    .plate .more{display:block;margin:6px 0 0;}
+    .handoff-cta{display:flex;max-width:100%;margin-left:0 !important;flex-wrap:wrap;}
+    .handoff-cta + .handoff-cta{margin-top:14px;}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation-duration:.001ms !important;animation-delay:0s !important;
+      animation-iteration-count:1 !important;transition-duration:.001ms !important;scroll-behavior:auto !important;}
+    .curtain,.handoff-curtain{display:none;}
+    .scene{transform:none !important;}
+    .lede .l>span,.handoff-lede .l>span{transform:none !important;}
+    .rail-rule,.plate::before{transform:none !important;}
+    #atlas .cell,#atlas .sprite{opacity:1 !important;transform:none !important;}
+    #atlas .packet{animation:none !important;opacity:1;}
+    #atlas .proposal-arrival.arrived .proposal-packet{opacity:1;transform:none;}
+    .ticker-track{transform:none !important;}
+    .ticker-track span+span{display:none;}
+  }
+</style>
+</head>
+<body>
+
+<div class="curtain" aria-hidden="true"><div class="curtain-mark">COUNCIL</div></div>
+<div class="grain" aria-hidden="true"></div>
+
+<div class="handoff-curtain" id="handoffCurtain" aria-hidden="true"><div class="hc-mark">REPORT</div></div>
+
+<div class="sheet">
+
+  <div class="rail">
+    <div class="wordmark">ATLAS</div>
+    <div class="rail-rule"></div>
+    <div class="rail-meta">Fig.&nbsp;02&nbsp;·&nbsp;Council</div>
   </div>
+
+  <div class="rail-r" aria-hidden="true">
+    <div class="dot"></div>
+    <div class="est">Live&nbsp;map</div>
+  </div>
+
+  <header class="topbar">
+    <div class="menu">
+      <div class="label menu-title">Menu</div>
+      <a href="/" aria-current="page">Atlas</a>
+      <a href="/console.html">Console</a>
+      <a href="/mandate.html">Instructions</a>
+      <a href="/council.html">Council</a>
+      <a href="/member.html">My seat</a>
+      <a href="/report.html" id="navReport">Report</a>
+      <a href="/policy">Policy</a>
+      <a href="/audit/verify">Audit</a>
+      <a href="/verify.html">Verify log</a>
+    </div>
+    <div>
+      <div class="label">Nodes live</div>
+      <p class="topval"><span class="live"></span><span id="liveCount">4 / 4</span></p>
+    </div>
+    <div>
+      <div class="label">Links</div>
+      <p class="topval"><span id="linkCount">03 open</span></p>
+    </div>
+    <div class="right">
+      <div class="label">Source</div>
+      <p class="topval"><span class="chip" id="sourceChip">Simulated</span></p>
+    </div>
+  </header>
+
+  <main class="hero">
+    <div class="scene">
+      <div class="scene-in">
+        <svg id="atlas" viewBox="0 0 760 430" role="img" aria-describedby="journeyCaption"
+             aria-label="Isometric council: a treasury, an agent, a council hall and a World ID shore. A pixel courier carries a claim along the bridges; the route is illustrated, not a live transaction."></svg>
+        <div class="atlas-courier" id="atlasCourier" aria-hidden="true" hidden>
+          <div class="council-pet" id="atlasPet" data-pose="idle"></div>
+        </div>
+      </div>
+      <p class="journey-caption" id="journeyCaption" role="status" aria-live="polite" aria-atomic="true">
+        <span class="label">Illustrated route</span><span id="journeyStep">A claim leaves the treasury.</span>
+        <span class="journey-outcome" id="journeyOutcome">Log not loaded. No signing is implied.</span>
+      </p>
+
+      <div class="progress" aria-hidden="true"><span id="fill"></span></div>
+
+      <div class="controls">
+        <button id="attack" type="button" aria-label="Toggle attack-surface view" aria-pressed="false" title="Attack surface">&#9888;</button>
+        <button id="play" type="button" aria-label="Pause map motion" title="Pause map motion">&#10073;&#10073;</button>
+        <button id="journeyReplay" type="button" aria-label="Replay illustrated courier route">Replay</button>
+        <input id="scrub" type="range" min="0" max="280" value="0" step="1"
+               aria-label="Scrub the illustrated timeline" />
+        <span class="mono" id="clock">00:00</span>
+        <span class="mono" id="state">Genesis &middot; 4 shores</span>
+      </div>
+
+      <p class="plate">Fig. 02 &middot; The council &mdash; generated in code
+        <span class="more">Scroll <i aria-hidden="true">&darr;</i></span></p>
+    </div>
+
+    <div>
+      <p class="lede">
+        <span class="l"><span>A council is not</span></span>
+        <span class="l"><span>a signature. It is</span></span>
+        <span class="l"><span>a check.</span></span>
+      </p>
+      <p class="body">One agent. One council seat. It checks the transfer before it signs.</p>
+      <ol class="legend journey-beats" aria-label="How a claim becomes a signed receipt">
+        <li data-beat="0"><button type="button" class="row" data-island="settlement" aria-label="Claim parcel: inspect the treasury">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M2 23 16 16 30 23 16 30Z" fill="#8cb8de"/><path d="M6 21 16 16 26 21 16 26Z" fill="#6fae5f"/><path d="M10 9h12v12H10z" fill="#e23b28"/><path d="M15 9h2v7h-2z" fill="#f2efe7"/></svg>
+          <span>Claim parcel<small>01 &middot; Treasury</small></span></button></li>
+        <li data-beat="1"><button type="button" class="row" data-island="rollup" aria-label="Compare claim and transfer: inspect the agent">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M2 6h11v20H2zm17 0h11v20H19z" fill="#d8d3c6"/><path d="M4 10h7v2H4zm17 0h7v2h-7zM4 15h7v2H4zm17 0h7v2h-7z" fill="#68635b"/><path d="M13 14h6v2h-6zm0 4h6v2h-6z" fill="#e23b28"/></svg>
+          <span>Compare<small>02 &middot; Claim / transfer</small></span></button></li>
+        <li data-beat="2"><button type="button" class="row" data-island="outpost" aria-label="World ID gate for large proposals: inspect World ID">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 26V6h24v20h-5V11H9v15z" fill="#b8b1a1"/><path d="M4 6h24v4H4z" fill="#e23b28"/><path d="M14 14h4v4h-4zm-2 5h8v6h-8z" fill="#68635b"/></svg>
+          <span>World ID<small>03 &middot; If large</small></span></button></li>
+        <li data-beat="3"><button type="button" class="row" data-island="dao" aria-label="Signed receipt only after signing: inspect the council">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 3h18v26H7z" fill="#d8d3c6"/><path d="M10 7h12v2H10zm0 5h12v2H10z" fill="#8b857a"/><path d="M10 21h3v3h3v-3h3v-3h3v-3h-3v3h-3v3h-3v-3h-3z" fill="#e23b28"/></svg>
+          <span>Signed receipt<small>04 &middot; Only if signed</small></span></button></li>
+      </ol>
+    </div>
+  </main>
+
+  <div class="ticker" aria-hidden="true">
+    <div class="ticker-track"><span id="tickA"></span><span id="tickB"></span></div>
+  </div>
+
+  <footer class="footer">
+    <div class="col">
+      <div class="label">Shores</div>
+      <p>Settlement <b>01</b><br/>Rollups <b>02</b><br/>Outposts <b>01</b><br/>Bridges <b>03</b></p>
+    </div>
+    <div class="col">
+      <div class="label">Traffic</div>
+      <p>Packets <b>live</b><br/>Round trip <b>4.4 s</b><br/>Queued <b id="queuedCount">0</b><br/>Reorgs <b>0</b></p>
+    </div>
+    <div class="col">
+      <details class="tech-details">
+        <summary><span class="label">Reading &middot; technical</span></summary>
+        <p><span>settle</span> 0x6a72&hellip;<br/><span>rollup</span> 0x3c20&hellip;<br/><span>dao</span> 0x7e4b&hellip;<br/><span>bridge</span> 0x1176&hellip;</p>
+      </details>
+    </div>
+    <div class="col">
+      <div class="label">Note</div>
+      <p>An illustration,<br/>not a network.<br/><span><a href="/audit">Live log at /audit.</a></span></p>
+    </div>
+  </footer>
+
+  <section class="handoff" id="handoff" aria-label="Continue to the editorial">
+    <div class="handoff-inner">
+      <div class="label">Fig. 03 &middot; The decision</div>
+      <p class="handoff-lede">
+        <span class="l"><span>The map ends.</span></span>
+        <span class="l"><span>The check begins.</span></span>
+      </p>
+      <p class="handoff-body">Every island is a proposal. Every bridge is a transfer. Keep scrolling for the ledger of one decision &mdash; the described amount against the actual one.</p>
+      <a class="handoff-cta" id="ctaReport" href="/report.html?from=atlas">Continue to the report <span aria-hidden="true">&darr;</span></a>
+      <a class="handoff-cta" href="/console.html" style="margin-left:18px">Enter the console <span aria-hidden="true">&nearr;</span></a>
+    </div>
+    <div class="handoff-line" aria-hidden="true"><span id="handoffFill"></span></div>
+  </section>
+
+  <aside class="panel" id="panel" role="dialog" aria-labelledby="panelTitle" aria-hidden="true" inert>
+    <button class="panel-close" id="panelClose" type="button" aria-label="Close island detail">&times;</button>
+    <div class="panel-head">
+      <div class="label">Island detail</div>
+      <h2 id="panelTitle">&mdash;</h2>
+    </div>
+    <dl id="panelBody"></dl>
+    <div class="label">Current phase</div>
+    <p id="panelNote" class="panel-note-txt">&mdash;</p>
+  </aside>
+
 </div>
-<script type="module">
-import { api } from "/assets/api.js";
-import { mountRail, mountTicker } from "/assets/rail.js";
-import { el, island, bridge, sky, hashSeed } from "/assets/scene.js";
 
-const [health, list, seats] = await Promise.all([api.health(), api.proposals(), api.seats()]);
-const h = health.data;
-const rows = list.data.proposals ?? [];
-const signed = rows.filter((p) => p.decision === "SIGNED").length;
-const refused = rows.filter((p) => p.decision === "REFUSED").length;
+<script>
+(function(){
+  var motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+  function isReduced(){ return motionQuery.matches; }
+  var svg = document.getElementById('atlas');
+  var NS = 'http://www.w3.org/2000/svg';
+  function E(name, attrs, parent, cls, delay){
+    var n = document.createElementNS(NS, name);
+    for (var k in attrs) n.setAttribute(k, attrs[k]);
+    if (cls) n.setAttribute('class', cls);
+    if (delay != null) n.style.animationDelay = delay.toFixed(2) + 's';
+    (parent || svg).appendChild(n);
+    return n;
+  }
+  function rect(x,y,w,h,fill,parent,cls,delay){
+    return E('rect',{x:x,y:y,width:w,height:h,fill:fill},parent,cls,delay);
+  }
+  function poly(pts,fill,parent,cls,delay){
+    return E('polygon',{points:pts.map(function(p){return p.join(',');}).join(' '),fill:fill},parent,cls,delay);
+  }
+  function txt(x,y,str,parent,size){
+    var t = E('text',{x:x,y:y,fill:'#8b857a','font-size':size||7,
+      'font-family':'ui-monospace,Menlo,monospace','letter-spacing':'.12em',
+      'text-anchor':'middle'},parent);
+    t.textContent = str; return t;
+  }
 
-mountRail(document.getElementById("top"), "/", [
-  { label: "Mode", value: `${h.mode} · ${h.network}`, dot: h.mode === "real" ? "green" : "red" },
-  { label: "Signed", value: `${signed} / ${rows.length}`, dot: "red" },
-  { label: "Seats", value: `${seats.data.count} held`, end: true },
-  ...(rows[0] ? [{ report: `/report.html?proposal=${encodeURIComponent(rows[0].id)}` }] : []),
-]);
+  var HW = 8, HH = 4, SIDE = 16;
+  var P = {
+    grass:['#7bb86a','#6fae5f','#8ac47a'],
+    grassB:['#6aa85c','#5f9d52','#74b366'],
+    dirt:'#7a5a3a', dirt2:'#6a4c30',
+    water:'#a6cbe8', water2:'#8cb8de', deep:'#79a9d2',
+    body:'#f2efe7', red:'#e23b28',
+    pine:'#3f7d3a', pineHi:'#4f8f45', trunk:'#6a4c30',
+    stone:'#cfc9ba', stone2:'#b8b1a1', cloud:'#ded8c8'
+  };
 
-const svg = document.getElementById("scene");
-svg.append(sky({ width: 800 }));
-const C = [400, 238];
-const n = rows.length;
-const spots = rows.map((_, i) => {
-  const a = (-150 + (360 / Math.max(n, 1)) * i) * (Math.PI / 180);
-  return [C[0] + Math.cos(a) * 285, C[1] + Math.sin(a) * 135];
-});
-const bridges = el("g"); svg.append(bridges);
-spots.forEach((s, i) => bridges.append(bridge(C, s, { id: rows[i].id })));
-const treasury = el("g", { class: "island", "data-treasury": "true" }, [island({ cx: C[0], cy: C[1], cols: 14, rows: 10, seed: 11, accent: "#df3d2a" })]);
-const tl = el("text", { class: "island-label", x: C[0], y: C[1] + 62, "text-anchor": "middle" }); tl.textContent = "Treasury";
-treasury.append(tl); svg.append(treasury);
-rows.forEach((p, i) => {
-  const [x, y] = spots[i];
-  const accent = p.decision === "SIGNED" ? "#3f9b45" : p.decision === "REFUSED" ? "#df3d2a" : "#9b978b";
-  const size = p.large ? [10, 8] : [8, 6];
-  const a = el("a", { href: `/report.html?proposal=${encodeURIComponent(p.id)}`, class: "island", "data-proposal": p.id, "data-decision": p.decision ?? "PENDING", "data-large": String(p.large) }, [
-    island({ cx: x, cy: y, cols: size[0], rows: size[1], seed: hashSeed(p.id), accent }),
-  ]);
-  const t = el("text", { class: "island-label", x, y: y + 44, "text-anchor": "middle" }); t.textContent = `${p.id}${p.large ? " · large" : ""}`;
-  a.append(t);
-  if (p.large) a.append(el("rect", { x: x - 3, y: y - 46, width: 6, height: 6, fill: "#6fb0d6" }));
-  svg.append(a);
-});
-if (!n) {
-  const t = el("text", { class: "island-label", x: 400, y: 330, "text-anchor": "middle" }); t.textContent = "No proposals yet · open the console to submit one";
-  svg.append(t);
-}
+  /* ============ MODEL ============ */
+  var MODEL = {
+    duration: 28,
+    chains: [
+      { id:'settlement', label:'TREASURY', cx:372, cy:232, A:8.2, B:5.1, cool:false, lx:372, ly:318 },
+      { id:'rollup',     label:'AGENT',     cx:158, cy:176, A:4.6, B:2.9, cool:true,  lx:158, ly:232 },
+      { id:'dao',        label:'COUNCIL',        cx:604, cy:190, A:4.1, B:2.7, cool:true,  lx:604, ly:244 },
+      { id:'outpost',    label:'WORLD ID',    cx:636, cy:330, A:2.7, B:1.8, cool:true,  lx:636, ly:372 }
+    ],
+    links: [
+      { id:'b1', from:'settlement', to:'rollup',  fc:[-6.4,1.2], tc:[3.6,0.6],  dur:3.6 },
+      { id:'b2', from:'settlement', to:'dao',     fc:[6.2,-1.4], tc:[-3.2,0.8], dur:4.4 },
+      { id:'b3', from:'settlement', to:'outpost', fc:[5.4,3.4],  tc:[-1.4,-0.6],dur:4.0 }
+    ],
+    phases: [
+      { t:0,  chains:{},                                          links:{},                                       note:'Genesis · 4 nodes' },
+      { t:3,  chains:{},                                          links:{b1:'open'},                              note:'Treasury scheduled' },
+      { t:6,  chains:{},                                          links:{b1:'open',b2:'open'},                    note:'Check paid' },
+      { t:9,  chains:{},                                          links:{b1:'open',b2:'open',b3:'open'},          note:'All nodes linked' },
+      { t:13, chains:{rollup:'degraded'},                         links:{b1:'open',b2:'open',b3:'open'},          note:'Agent busy · checking' },
+      { t:17, chains:{rollup:'degraded'},                         links:{b1:'open',b2:'severed',b3:'open'},       note:'Link refused · transfer mismatch' },
+      { t:21, chains:{rollup:'degraded',dao:'dark'},              links:{b1:'open',b2:'severed',b3:'open'},       note:'Council waits · World ID required' },
+      { t:25, chains:{},                                          links:{b1:'open',b2:'open',b3:'open'},          note:'Recovery · approved' }
+    ]
+  };
 
-document.getElementById("tl-label").textContent = `${signed} / ${rows.length} signed`;
-document.getElementById("tl-right").textContent = `${refused} refused`;
-document.getElementById("tl-fill").style.width = rows.length ? `${(signed / rows.length) * 100}%` : "0";
+  window.ATLAS_MODEL = MODEL;   /* live-original.js rewrites MODEL.phases from real proposals */
+  var groups = {};   /* chainId -> { g, iso } */
+  var linkGroups = {};
+  var packetMotions = [];
 
-mountTicker(document.getElementById("ticker"), [
-  `Mode ${h.mode}`, `Network ${h.network}`, `x402 ${h.x402Buyer.startsWith("real") ? "real" : "simulated"}`, `Check price ${h.checkPrice}`,
-  `0G ${h.zeroG}`, `World ${h.world.startsWith("real") ? "real" : "mocked"}`, `Seats ${seats.data.count}`, `${rows.length} proposals`,
-]);
+  /* ============ PAINT ============ */
+  function paintIsland(cfg, index){
+    var g = E('g', { id:'island-'+cfg.id }, svg, 'island');
+    var A = cfg.A, B = cfg.B, cx = cfg.cx, cy = cfg.cy;
+    var cols = cfg.cool ? P.grassB : P.grass;
+    var iso = function(c,r){ return [cx + (c-r)*HW, cy + (c+r)*HH]; };
+    var inside = function(c,r,a,b){ var x=c/(a||A), y=r/(b||B); return x*x+y*y <= 1; };
+    var base = 0.38 + index*0.04;
 
-const col = (title, lines) => { const d = document.createElement("div"); const l = document.createElement("span"); l.className = "label"; l.textContent = title; const p = document.createElement("p"); p.textContent = lines.join("\n"); p.style.whiteSpace = "pre-line"; d.append(l, p); return d; };
-document.getElementById("cols").replaceChildren(
-  col("Council", [`Proposals ${rows.length}`, `Signed ${signed}`, `Refused ${refused}`, `Seats ${seats.data.count}`]),
-  col("Traffic", [`Check price ${h.checkPrice}`, `Spend cap left ${h.spendCapRemaining}`, `Buyer ${h.x402Buyer}`]),
-  col("Rails", [`HCS ${h.hcsTopic}`, `Treasury ${h.treasury}`, `0G ${h.zeroG}`, `World ${h.world}`]),
-  col("Note", [h.note]),
-);
-document.body.dataset.state = "ready";
+    for (var c=-Math.ceil(A+3); c<=Math.ceil(A+3); c++){
+      for (var r=-Math.ceil(B+3); r<=Math.ceil(B+3); r++){
+        if (!inside(c,r,A+2.6,B+2.6)) continue;
+        if (inside(c,r,A+0.5,B+0.5)) continue;
+        var w = iso(c,r);
+        var deep = !inside(c,r,A+1.5,B+1.5);
+        var sh = ((c*7+r*13)%9)===0;
+        poly([[w[0],w[1]-HH],[w[0]+HW,w[1]],[w[0],w[1]+HH],[w[0]-HW,w[1]]],
+             deep?P.deep:(sh?P.water2:P.water), g, 'cell'+(sh?' shimmer':''),
+             base + (Math.abs(c)+Math.abs(r))*0.02);
+      }
+    }
+    for (var c2=-Math.ceil(A); c2<=Math.ceil(A); c2++){
+      for (var r2=-Math.ceil(B); r2<=Math.ceil(B); r2++){
+        if (!inside(c2,r2)) continue;
+        var t = iso(c2,r2);
+        var h = ((c2*73+r2*151)%7+7)%7;
+        var d = base + 0.15 + Math.hypot(c2/A, r2/B)*0.34;
+        poly([[t[0],t[1]-HH],[t[0]+HW,t[1]],[t[0],t[1]+HH],[t[0]-HW,t[1]]],
+             cols[h%3], g, 'cell', d);
+        if (!inside(c2+1,r2))
+          poly([[t[0]+HW,t[1]],[t[0],t[1]+HH],[t[0],t[1]+HH+SIDE],[t[0]+HW,t[1]+SIDE]],
+               P.dirt2, g, 'cell', d+0.03);
+        if (!inside(c2,r2+1))
+          poly([[t[0]-HW,t[1]],[t[0],t[1]+HH],[t[0],t[1]+HH+SIDE],[t[0]-HW,t[1]+SIDE]],
+               P.dirt, g, 'cell', d+0.03);
+      }
+    }
+    E('ellipse',{ cx:cx, cy:cy, rx:A*HW*1.07, ry:B*HH*1.07, fill:'none', stroke:P.red,
+                  'stroke-width':1, 'stroke-dasharray':'3 5', opacity:0 }, g, 'ring');
+    groups[cfg.id] = { g:g, iso:iso };
+    return iso;
+  }
+
+  var isoMain = paintIsland(MODEL.chains[0], 0);
+  var isoR    = paintIsland(MODEL.chains[1], 1);
+  var isoD    = paintIsland(MODEL.chains[2], 2);
+  var isoO    = paintIsland(MODEL.chains[3], 3);
+
+  /* settlement: lighthouse + stacking blocks */
+  var lh = isoMain(-1.4,-1.2);
+  var gL = E('g',{transform:'translate('+lh[0]+','+lh[1]+')'}, groups.settlement.g, 'sprite', .62);
+  poly([[0,-34],[86,-64],[86,-4]], P.red, gL, 'beam', 2.0);
+  rect(-7,-30,14,6,P.stone,gL);
+  rect(-5,-24,10,24,P.stone2,gL);
+  rect(-6,-12,12,4,P.body,gL);
+  rect(-3,-32,6,5,P.red,gL);
+  rect(-9,0,18,3,P.stone,gL);
+
+  [[3.2,-1.4,0],[3.2,-0.6,0.9],[3.2,0.2,1.8],[3.2,1.0,2.7]].forEach(function(b){
+    var bp = isoMain(b[0], b[1]);
+    var g = E('g',{transform:'translate('+bp[0]+','+bp[1]+')'}, groups.settlement.g, 'sprite', .66);
+    var inner = E('g',{},g,'block');
+    inner.style.animationDelay = (2.0 + b[2]) + 's';
+    rect(-7,-9,14,7,P.body,inner);
+    rect(-7,-9,14,2,P.stone,inner);
+    rect(-5,-6,3,2,P.red,inner);
+    rect(0,-6,4,1,P.stone2,inner);
+  });
+
+  /* rollup: building + pines */
+  var rl = isoR(0.2,-0.2);
+  var gR = E('g',{transform:'translate('+rl[0]+','+rl[1]+')'}, groups.rollup.g, 'sprite', .70);
+  rect(-10,-16,20,16,P.body,gR); rect(-10,-16,20,3,P.red,gR);
+  rect(-7,-12,5,4,P.stone,gR);   rect(0,-12,5,4,P.stone,gR);
+  rect(-6,-4,12,4,P.stone2,gR);
+  [[-3.2,0.6],[2.6,1.0]].forEach(function(t){
+    var tp = isoR(t[0],t[1]);
+    var g = E('g',{transform:'translate('+tp[0]+','+tp[1]+')'}, groups.rollup.g, 'sprite', .73);
+    rect(-1,-7,2,7,P.trunk,g);
+    rect(-4,-11,8,4,P.pine,g);
+    rect(-3,-15,6,4,P.pineHi,g);
+  });
+
+  /* dao: hall + plinth */
+  var dl = isoD(0.1,-0.1);
+  var gD = E('g',{transform:'translate('+dl[0]+','+dl[1]+')'}, groups.dao.g, 'sprite', .76);
+  rect(-9,-13,18,13,P.body,gD); rect(-9,-13,18,3,P.stone,gD);
+  rect(-4,-10,8,7,P.body,gD);   rect(-4,-10,8,1,P.red,gD);
+  rect(-1,-6,2,3,P.stone2,gD);
+  var dd = isoD(1.6,1.2);
+  var gD2 = E('g',{transform:'translate('+dd[0]+','+dd[1]+')'}, groups.dao.g, 'sprite', .79);
+  rect(-6,-4,12,4,P.stone,gD2); rect(-4,-8,8,4,P.stone2,gD2);
+
+  /* outpost */
+  var ol = isoO(0,0);
+  var gO = E('g',{transform:'translate('+ol[0]+','+ol[1]+')'}, groups.outpost.g, 'sprite', .82);
+  rect(-5,-9,10,9,P.body,gO); rect(-5,-9,10,2,P.red,gO); rect(-2,-5,4,5,P.stone,gO);
+
+  /* ============ LINKS ============ */
+  MODEL.links.forEach(function(l, idx){
+    var g = E('g', { id:'link-'+l.id }, svg, 'link');
+    var from = groups[l.from].iso(l.fc[0], l.fc[1]);
+    var to   = groups[l.to].iso(l.tc[0], l.tc[1]);
+    var midY = Math.min(from[1], to[1]) - 14;
+    var d = 'M'+from[0]+' '+from[1]+' Q'+((from[0]+to[0])/2)+' '+midY+' '+to[0]+' '+to[1];
+
+    E('path',{ d:d, fill:'none', stroke:'#b8b1a1', 'stroke-width':3,
+               'stroke-linecap':'round' }, g, 'deck');
+    g.lastChild.style.animationDelay = (.58 + idx*.06) + 's';
+    E('path',{ d:d, fill:'none', stroke:P.red, 'stroke-width':1,
+               'stroke-dasharray':'4 12', 'stroke-linecap':'round' }, g, 'bridge-dash');
+    g.lastChild.style.animationDelay = (.68 + idx*.06) + 's';
+
+    /* queued packets at the near shore, revealed only when severed */
+    for (var q=0;q<3;q++){
+      var qg = E('g', { class:'queue' }, g);
+      qg.style.animationDelay = (q*0.12) + 's';
+      rect(from[0]-6+q*5, from[1]-4, 4, 4, P.red, qg);
+    }
+
+    /* two packets crossing, opposite directions */
+    for (var i=0;i<2;i++){
+      var fwd = i === 0;
+      var start = fwd ? from : to;
+      var dx = (fwd ? to[0]-from[0] : from[0]-to[0]);
+      var dy = (fwd ? to[1]-from[1] : from[1]-to[1]);
+      var pg = E('g', { transform:'translate('+start[0]+','+start[1]+')' }, g, 'packet');
+      var inner = E('g', {}, pg);
+      rect(-3,-3,6,6, P.red, inner);
+      if (isReduced()){
+        inner.setAttribute('transform','translate('+(dx*(i ? .65 : .35))+','+(dy*(i ? .65 : .35))+')');
+      } else {
+        packetMotions.push(inner.animate(
+          [{ transform:'translate(0px,0px)' }, { transform:'translate('+dx+'px,'+dy+'px)' }],
+          { duration: l.dur*1000, delay: (.82 + idx*.06 + i*l.dur/2)*1000,
+            iterations: Infinity, easing:'linear' }
+        ));
+      }
+    }
+    /* breach burst at midpoint — only revealed in attack-surface mode */
+    var burst = E('g', { class:'burst' }, g);
+    var mx = (from[0] + to[0]) / 2, my = (from[1] + to[1]) / 2 - 8;
+    burst.setAttribute('transform', 'translate(' + mx + ',' + my + ')');
+    var bi = E('g', { class:'burst-in' }, burst);
+    E('circle', { cx:0, cy:0, r:5, fill:'none', stroke:P.red, 'stroke-width':1.4 }, bi);
+    E('circle', { cx:0, cy:0, r:9, fill:'none', stroke:P.red, 'stroke-width':1, opacity:.6 }, bi);
+
+    linkGroups[l.id] = g;
+  });
+
+  /* A new live proposal lands as a small pixel islet on the treasury shore. */
+  var proposalPoint = isoMain(6.8, 2.4);
+  var proposalArrival = E('g',{transform:'translate('+proposalPoint[0]+','+proposalPoint[1]+')',
+    opacity:0,'aria-hidden':'true'},svg,'proposal-arrival');
+  var proposalPixels = E('g',{},proposalArrival,'proposal-packet');
+  poly([[-12,0],[0,-6],[12,0],[0,6]],P.water2,proposalPixels);
+  poly([[-7,0],[0,-3.5],[7,0],[0,3.5]],P.grass[1],proposalPixels);
+  rect(-3,-8,6,6,P.red,proposalPixels);
+  rect(-1,-7,2,2,P.body,proposalPixels);
+
+  /* ============ AMBIENCE ============ */
+  [[300,300,0],[120,262,1.4],[560,268,2.8]].forEach(function(rp){
+    var g = E('g',{transform:'translate('+rp[0]+','+rp[1]+')'},svg,'ripple');
+    g.style.animationDelay = rp[2] + 's';
+    E('polygon',{points:'-26,0 0,13 26,0 0,-13',fill:'none',
+      stroke:'#cfe4f4','stroke-width':1.2}, g);
+  });
+  [[52,300,'0s'],[300,364,'5s']].forEach(function(b){
+    var g = E('g',{class:'boat'},svg); g.style.animationDelay = b[2];
+    rect(b[0],b[1],24,4,P.dirt,g);
+    rect(b[0]+6,b[1]-6,2,6,P.trunk,g);
+    rect(b[0]+8,b[1]-5,10,5,P.body,g);
+    rect(b[0]+8,b[1]-5,10,2,P.red,g);
+  });
+  [[70,54,0],[300,40,9],[520,66,17]].forEach(function(cl){
+    var g = E('g',{class:'cloud'},svg); g.style.animationDelay = cl[2] + 's';
+    rect(cl[0],cl[1],40,6,P.cloud,g);
+    rect(cl[0]+9,cl[1]-5,22,5,P.cloud,g);
+    rect(cl[0]+4,cl[1]+6,30,4,P.cloud,g);
+  });
+  [[262,196,0],[470,214,1.2],[330,286,2.4],[596,246,3.1]].forEach(function(f){
+    var g = E('g',{class:'twinkle'},svg); g.style.animationDelay = f[2] + 's';
+    rect(f[0],f[1],3,3,'#f0a03c',g);
+  });
+
+  /* ============ LIFE ============ */
+  function flower(iso, c, r, delay){
+    var q = iso(c,r);
+    var o = E('g',{transform:'translate('+q[0]+','+q[1]+')'},svg,'sprite',.85);
+    var g = E('g',{},o,'bell'); g.style.animationDelay = delay + 's';
+    rect(-1,-14,2,14,'#4e8f45',g);
+    rect(1,-8,5,2,'#4e8f45',g);
+    rect(-6,-6,5,2,'#4e8f45',g);
+    rect(-4,-16,4,4,'#ffffff',g);
+    rect(1,-12,4,4,'#ffffff',g);
+    rect(-6,-9,4,4,'#ffffff',g);
+    rect(2,-15,4,1,'#4e8f45',g);
+  }
+  function tree(iso, c, r, delay){
+    var q = iso(c,r);
+    var o = E('g',{transform:'translate('+q[0]+','+q[1]+')'},svg,'sprite',.85);
+    var g = E('g',{},o,'tree'); g.style.animationDelay = delay + 's';
+    rect(-1,-8,2,8,P.trunk,g);
+    rect(-5,-13,10,5,P.pine,g);
+    rect(-4,-17,8,4,P.pine,g);
+    rect(-2,-21,4,4,P.pineHi,g);
+  }
+  function walker(iso, c, r, delay){
+    var q = iso(c,r);
+    var o = E('g',{transform:'translate('+q[0]+','+q[1]+')'},svg,'sprite',.87);
+    var g = E('g',{},o,'walker'); g.style.animationDelay = delay + 's';
+    rect(-3,-11,7,6,P.body,g);
+    rect(-2,-15,5,4,P.body,g);
+    rect(-1,-14,3,2,'#111110',g);
+    rect(-3,-5,2,5,'#d9d3c4',g,'legA');
+    rect(1,-5,2,5,'#d9d3c4',g,'legB');
+    rect(0,-9,1,3,P.red,g);
+  }
+  function smoke(x, y, delay){
+    for (var i=0;i<4;i++){
+      var g = E('g',{class:'puff'},svg);
+      g.style.animationDelay = (delay + i*0.5) + 's';
+      rect(x + (i%2 ? 2 : -2), y, 4, 4, '#cfc9ba', g);
+    }
+  }
+  function bird(y, delay, dur){
+    var o = E('g',{transform:'translate(40,'+y+')'},svg,'sprite',.9);
+    var g = E('g',{},o,'fly');
+    g.style.animationDuration = dur + 's';
+    g.style.animationDelay = delay + 's';
+    E('rect',{x:-1,y:-2,width:2,height:2,fill:'#111110'},g);
+    E('rect',{x:-5,y:-1,width:4,height:1,fill:'#111110'},g,'wing');
+    E('rect',{x:1,y:-1,width:4,height:1,fill:'#111110'},g,'wing');
+  }
+  function fish(x, y, delay){
+    var g = E('g',{class:'fish'},svg);
+    g.style.animationDelay = delay + 's';
+    rect(x, y, 3, 3, '#cfe4f4', g);
+    rect(x+4, y-2, 2, 2, '#cfe4f4', g);
+  }
+  function flag(x, y, delay){
+    var o = E('g',{transform:'translate('+x+','+y+')'},svg,'sprite',.85);
+    var g = E('g',{},o,'flag'); g.style.animationDelay = delay + 's';
+    rect(0,0,1,10,P.trunk,g);
+    E('polygon',{points:'1,0 10,2 1,5',fill:P.red},g);
+  }
+
+  /* flowers across the shores */
+  [[3.9,0.4,0],[-4.6,-1.6,0.7],[5.2,1.6,1.4],[-2.4,2.8,2.1]].forEach(function(f){
+    flower(isoMain, f[0], f[1], f[2]);
+  });
+  [[2.6,0.8,0.4],[-2.6,-0.8,1.1]].forEach(function(f){ flower(isoR, f[0], f[1], f[2]); });
+  [[-2.4,0.9,0.9],[2.2,1.0,1.6]].forEach(function(f){ flower(isoD, f[0], f[1], f[2]); });
+
+  /* trees */
+  [[-6.2,1.0,0],[-5.0,-1.2,0.5],[6.0,0.8,1.0]].forEach(function(t){
+    tree(isoMain, t[0], t[1], t[2]);
+  });
+  tree(isoD, 2.8, -1.2, 0.3);
+
+  /* figures walking the meadows */
+  walker(isoMain, -3.2, 2.6, 0);
+  walker(isoMain, 1.4, 3.4, 6);
+  walker(isoR, 0.8, 1.6, 3);
+  walker(isoD, -1.4, 1.4, 9);
+
+  /* chimney smoke */
+  var rs = isoR(-0.2, -0.2);
+  smoke(rs[0]+6, rs[1]-18, 2.4);
+  var ds = isoD(0.1, -0.1);
+  smoke(ds[0]-4, ds[1]-15, 3.0);
+
+  /* flags on the beacon and the halls */
+  var lf = isoMain(-1.4,-1.2);
+  flag(lf[0]+6, lf[1]-34, 0);
+  flag(rs[0]-11, rs[1]-17, 0.9);
+  flag(ds[0]+9, ds[1]-14, 1.6);
+
+  /* birds crossing the sky */
+  bird(96, 0, 26);
+  bird(120, 9, 31);
+  bird(78, 17, 23);
+
+  /* fish breaking the surface */
+  fish(214, 296, 0.6);
+  fish(506, 300, 3.4);
+  fish(636, 250, 5.1);
+
+  /* extra boats with wakes */
+  [[170,344,'2s'],[420,318,'8s']].forEach(function(b){
+    var w = E('g',{class:'wake'},svg); w.style.animationDelay = b[2];
+    rect(b[0]-16, b[1]+2, 14, 1, '#cfe4f4', w);
+    var g = E('g',{class:'boat'},svg); g.style.animationDelay = b[2];
+    rect(b[0], b[1], 22, 4, P.dirt, g);
+    rect(b[0]+5, b[1]-5, 2, 5, P.trunk, g);
+    rect(b[0]+7, b[1]-4, 9, 4, P.body, g);
+    rect(b[0]+7, b[1]-4, 9, 2, P.red, g);
+  });
+
+  /* more fireflies and ripples */
+  [[190,238,0.7],[420,246,1.9],[540,300,2.6],[300,352,3.4]].forEach(function(f){
+    var g = E('g',{class:'twinkle'},svg); g.style.animationDelay = f[2] + 's';
+    rect(f[0], f[1], 3, 3, '#f0a03c', g);
+  });
+  [[420,282,1.0],[200,320,3.2]].forEach(function(rp){
+    var g = E('g',{transform:'translate('+rp[0]+','+rp[1]+')'},svg,'ripple');
+    g.style.animationDelay = rp[2] + 's';
+    E('polygon',{points:'-26,0 0,13 26,0 0,-13',fill:'none',
+      stroke:'#cfe4f4','stroke-width':1.2}, g);
+  });
+
+  MODEL.chains.forEach(function(c){ txt(c.lx, c.ly, c.label, svg, 7); });
+
+  /* ============ SKY (day / night) ============ */
+  var sun, moon, stars;
+  (function buildSky(){
+    var g = E('g', { id:'sky' }, svg);
+    svg.insertBefore(g, svg.firstChild);
+    stars = E('g', { id:'stars' }, g);
+    var pts = [[60,40],[140,70],[220,36],[300,84],[380,52],[460,30],[540,90],[610,46],
+               [90,120],[260,140],[420,120],[560,150],[180,30],[500,60],[330,20],[640,110]];
+    pts.forEach(function(p){ E('circle', { cx:p[0], cy:p[1], r:1.6, fill:'#f0f4ff' }, stars); });
+    stars.style.transition = 'opacity .35s linear';
+    sun = E('g', { id:'sun' }, g);
+    E('circle', { cx:0, cy:0, r:18, fill:'#ffd27a', opacity:.18 }, sun);
+    E('circle', { cx:0, cy:0, r:10, fill:'#ffce6e' }, sun);
+    moon = E('g', { id:'moon' }, g);
+    E('circle', { cx:0, cy:0, r:9, fill:'#e6edf5' }, moon);
+    E('circle', { cx:-3, cy:-2, r:2, fill:'#cfd8e4' }, moon);
+    E('circle', { cx:3, cy:3, r:1.4, fill:'#cfd8e4' }, moon);
+  })();
+
+  /* ============ COURIER: ILLUSTRATION, NEVER A SIGNING SIGNAL ============ */
+  var courier = document.getElementById('atlasCourier');
+  var pet = document.getElementById('atlasPet');
+  var journeyStep = document.getElementById('journeyStep');
+  var journeyLog = document.getElementById('journeyOutcome');
+  var journeyBeats = Array.from(document.querySelectorAll('.journey-beats li'));
+  var selectedRow = null, knownJourneys = null, ignoreLiveScrub = false;
+
+  function journeyOutcome(row){
+    if (!row) return { pose:'idle', stop:'dao', label:'No logged outcome' };
+    if (row.decision === 'SIGNED') return { pose:'signed', stop:'dao', label:'Signed' };
+    if (row.decision === 'CANCELLED') return { pose:'refused', stop:'dao', label:'Cancelled' };
+    if (row.decision === 'REFUSED') return { pose:'refused',
+      stop:row.matches === false ? 'rollup' : row.matches === true && row.large === true ? 'outpost' : 'dao',
+      label:'Refused' };
+    if (row.decision === 'PENDING_CHALLENGE') return { pose:'wait', stop:'dao', label:'Pending challenge' };
+    if (row.decision === 'PENDING_VOTE') return { pose:'wait', stop:'dao', label:'Waiting for the council' };
+    return { pose:'wait', stop:row.large === true && row.matches === true ? 'outpost' : 'rollup',
+      label:row.decision ? 'Outcome unrecognized' : 'Not decided' };
+  }
+
+  /* Sample the same quadratic bridge used by the map, not a floating shortcut. */
+  function bridgePoints(id, reverse){
+    var link = MODEL.links.find(function(l){ return l.id === id; });
+    var a = groups[link.from].iso(link.fc[0], link.fc[1]);
+    var b = groups[link.to].iso(link.tc[0], link.tc[1]);
+    var control = [(a[0]+b[0])/2, Math.min(a[1],b[1])-14];
+    var points = Array.from({length:13}, function(_, i){
+      var u = i/12, v = 1-u;
+      return [v*v*a[0]+2*v*u*control[0]+u*u*b[0], v*v*a[1]+2*v*u*control[1]+u*u*b[1]];
+    });
+    return reverse ? points.slice().reverse() : points;
+  }
+
+  function buildJourney(row){
+    var outcome = journeyOutcome(row);
+    var treasury = isoMain(1.2,3.4), agent = isoR(2.6,-0.6);
+    var gate = isoO(1,0.8), council = isoD(-1.2,1.2);
+    var beats = [
+      { beat:0, points:[treasury], caption:'A claim leaves the treasury.' },
+      { beat:1, points:[treasury].concat(bridgePoints('b1'),[agent]), caption:'Compare the claim with the transfer.' }
+    ];
+    if (outcome.stop === 'rollup') return beats;
+    var returnPath = [agent].concat(bridgePoints('b1',true),[treasury]);
+    if (!row || row.large === true){
+      beats = beats.concat([{ beat:2, points:returnPath.concat(bridgePoints('b3'),[gate]),
+        caption:'Large claim: stop at the World ID gate.' }]);
+      if (outcome.stop === 'outpost') return beats;
+      returnPath = [gate].concat(bridgePoints('b3',true),[treasury]);
+    }
+    return beats.concat([{ beat:3, points:returnPath.concat(bridgePoints('b2'),[council]),
+      caption:'A receipt needs an actual signature.' }]);
+  }
+
+  function pointAlong(points, progress){
+    var lengths = points.slice(1).map(function(p,i){ return Math.hypot(p[0]-points[i][0],p[1]-points[i][1]); });
+    var distance = lengths.reduce(function(sum,n){ return sum+n; },0) * Math.max(0,Math.min(1,progress));
+    for (var i=0;i<lengths.length;i++){
+      if (distance <= lengths[i]){
+        var f = lengths[i] ? distance/lengths[i] : 0;
+        return [points[i][0]+(points[i+1][0]-points[i][0])*f, points[i][1]+(points[i+1][1]-points[i][1])*f];
+      }
+      distance -= lengths[i];
+    }
+    return points[points.length-1];
+  }
+
+  var journeyRoute = buildJourney(null);
+  function paintJourney(time){
+    var score = Math.max(0,Math.min(1,time/MODEL.duration))*journeyRoute.length;
+    var index = Math.min(journeyRoute.length-1,Math.floor(score));
+    var beat = journeyRoute[index];
+    var travel = Math.min(1,(score-index)/0.7); /* walk, then hold the beat */
+    var moving = beat.points.length > 1 && travel < 1;
+    var finished = index === journeyRoute.length-1 && travel >= 1;
+    var outcome = journeyOutcome(selectedRow);
+    var point = pointAlong(beat.points,travel);
+    courier.style.left = (point[0]/760*100)+'%';
+    courier.style.top = (point[1]/430*100)+'%';
+    var pose = finished ? outcome.pose : moving ? 'walk' : beat.beat === 1 ? 'working' : beat.beat === 0 ? 'idle' : 'wait';
+    if (pet.dataset.pose !== pose) pet.dataset.pose = pose;
+    var caption = finished ? outcome.pose === 'signed' ? 'Signed receipt recorded.' :
+      outcome.pose === 'refused' ? outcome.label+' — no signature.' :
+      selectedRow ? outcome.label+' — no signature recorded.' : 'Receipt only after signing; this is an example.' : beat.caption;
+    if (journeyStep.textContent !== caption) journeyStep.textContent = caption;
+    journeyBeats.forEach(function(el){
+      var active = Number(el.dataset.beat) === beat.beat;
+      if (el.dataset.active !== String(active)) el.dataset.active = String(active);
+    });
+  }
+
+  function acceptAtlas(snapshot){
+    if (!snapshot || !Array.isArray(snapshot.rows)) return;
+    var rows = snapshot.rows.filter(function(row){ return row && typeof row.id === 'string'; });
+    var changed = knownJourneys ? rows.filter(function(row){
+      return row.decision && (!knownJourneys.has(row.id) || knownJourneys.get(row.id) !== row.decision);
+    }) : [];
+    knownJourneys = new Map(rows.map(function(row){ return [row.id,row.decision]; }));
+    selectedRow = changed.length ? changed[changed.length-1] :
+      rows.find(function(row){ return selectedRow && row.id === selectedRow.id; }) || rows[rows.length-1] || null;
+    journeyRoute = buildJourney(selectedRow);
+    var source = snapshot.mode === 'real' ? 'live' : snapshot.mode === 'sim' || snapshot.mode === 'simulated' ? 'simulated' : 'source unconfirmed';
+    journeyLog.textContent = selectedRow ? 'Logged · '+selectedRow.id+' — '+journeyOutcome(selectedRow).label+' · '+source : 'No logged proposals. This route is an example.';
+    if (changed.length){
+      t = isReduced() || document.hidden || userPaused ? MODEL.duration : 0;
+      playing = t < MODEL.duration;
+      /* live-original also scrubs to max in this task; the new route owns its clock. */
+      ignoreLiveScrub = true;
+      queueMicrotask(function(){ ignoreLiveScrub = false; });
+    }
+    lastPhase = -1;
+    last = null;
+    scrub.value = String(Math.round(t*10));
+    applyPhase(t);
+    paintPlayButton();
+    scheduleClock();
+  }
+
+  /* ============ STATE MACHINE ============ */
+  var elLive = document.getElementById('liveCount');
+  var elLinks = document.getElementById('linkCount');
+  var elState = document.getElementById('state');
+  var elClock = document.getElementById('clock');
+  var elQueued = document.getElementById('queuedCount');
+
+  function phaseAt(t){
+    var cur = MODEL.phases[0];
+    for (var i=0;i<MODEL.phases.length;i++){
+      if (MODEL.phases[i].t <= t) cur = MODEL.phases[i];
+    }
+    return cur;
+  }
+
+  var fill = document.getElementById('fill');
+  var tickA = document.getElementById('tickA');
+  var tickB = document.getElementById('tickB');
+  var lastPhase = -1;
+  var previousChains = {}, previousLinks = {};
+  var dot = document.querySelector('.topval .live');
+  var GLYPHS = '\u2593\u2592\u2591#@%&*+=<>/\\|01';
+
+  function replayState(el, cls){
+    if (!el) return;
+    el.classList.remove(cls);
+    if (!isReduced()) void el.offsetWidth;
+    el.classList.add(cls);
+    el._stateTimers = el._stateTimers || {};
+    clearTimeout(el._stateTimers[cls]);
+    el._stateTimers[cls] = setTimeout(function(){ el.classList.remove(cls); }, 950);
+  }
+
+  function emphasizeDecision(kind){
+    if (kind !== 'pass' && kind !== 'fail') return;
+    elState.classList.remove('decision-pass','decision-fail','m-flash-green','m-flash-red');
+    replayState(elState, kind === 'pass' ? 'm-flash-green' : 'm-flash-red');
+    replayState(elState, 'decision-' + kind);
+    if (kind === 'pass'){
+      replayState(groups.settlement.g, 'decision-pass');
+      replayState(groups.rollup.g, 'decision-pass');
+    } else {
+      replayState(linkGroups.b2, 'decision-fail');
+      replayState(groups.dao.g, 'decision-fail');
+    }
+  }
+
+  function bumpIfChanged(el, text){
+    if (el.textContent === text) return;
+    el.textContent = text;
+    if (isReduced()) return;
+    el.classList.remove('bump');
+    void el.offsetWidth;
+    el.classList.add('bump');
+  }
+
+  function scramble(el, text){
+    if (el._sc) clearInterval(el._sc);
+    if (isReduced()){ el.textContent = text; return; }
+    var frames = 11, i = 0;
+    el._sc = setInterval(function(){
+      i++;
+      var done = Math.floor(text.length * i / frames);
+      var out = text.slice(0, done);
+      for (var k = done; k < text.length; k++){
+        out += text.charAt(k) === ' ' ? ' ' : GLYPHS.charAt((Math.random()*GLYPHS.length)|0);
+      }
+      el.textContent = out;
+      if (i >= frames){ clearInterval(el._sc); el._sc = null; el.textContent = text; }
+    }, 26);
+  }
+
+  function flashDot(){
+    if (!dot || isReduced()) return;
+    dot.classList.remove('flash');
+    void dot.offsetWidth;
+    dot.classList.add('flash');
+  }
+
+  function updateTicker(ph, attack){
+    var tag = attack ? 'ATTACK SURFACE \u00b7 ' : '';
+    var seg = tag + (window.LIVE_TICKER || 'COUNCIL AGENT') + ' \u00b7 ' + ph.note + ' \u00b7 ';
+    tickA.textContent = seg;
+    tickB.textContent = seg;
+  }
+
+  function applyPhase(t){
+    var ph = phaseAt(t);
+    var live = 0, open = 0, queued = 0, sevCount = 0;
+
+    MODEL.chains.forEach(function(c){
+      var st = ph.chains[c.id] || 'live';
+      var g = groups[c.id].g;
+      if (previousChains[c.id] && previousChains[c.id] !== st)
+        replayState(g, st === 'live' ? 'decision-pass' : 'decision-fail');
+      previousChains[c.id] = st;
+      g.classList.toggle('degraded', st === 'degraded');
+      g.classList.toggle('dark', st === 'dark');
+      groups[c.id].state = st;
+      if (st !== 'dark') live++;
+    });
+
+    MODEL.links.forEach(function(l){
+      var st = ph.links[l.id] || 'idle';
+      var g = linkGroups[l.id];
+      if (previousLinks[l.id] && previousLinks[l.id] !== st) replayState(g, 'changed');
+      previousLinks[l.id] = st;
+      g.classList.toggle('idle', st === 'idle');
+      g.classList.toggle('severed', st === 'severed');
+      if (st === 'open') open++;
+      if (st === 'severed'){ queued += 3; sevCount++; }
+    });
+
+    bumpIfChanged(elLive, live + ' / 4');
+    bumpIfChanged(elLinks, (open < 10 ? '0' + open : open) + ' open');
+    bumpIfChanged(elQueued, String(queued));
+    elClock.textContent = '00:' + String(Math.floor(t)).padStart(2,'0');
+    if (fill) fill.style.width = Math.min(100, (t / MODEL.duration) * 100) + '%';
+
+    var sNote = (attackOn && sevCount > 0) ? 'BREACH · ' + ph.note : ph.note;
+    var idx = MODEL.phases.indexOf(ph);
+    if (idx !== lastPhase){
+      lastPhase = idx;
+      scramble(elState, sNote);
+      flashDot();
+      updateTicker(ph, attackOn);
+      var decisionNote = sNote.toLowerCase();
+      if (/approved|recovery|matches/.test(decisionNote)) emphasizeDecision('pass');
+      else if (/transfer mismatch|link refused|breach/.test(decisionNote)) emphasizeDecision('fail');
+    }
+    curT = t; curNote = sNote;
+    applySky(t);
+    paintJourney(t);
+    if (scrub) scrub.setAttribute('aria-valuetext',elClock.textContent+' — illustrated route — '+journeyStep.textContent);
+  }
+
+  /* ============ CLOCK + SCRUB ============ */
+  var t = isReduced() ? MODEL.duration : 0, playing = !isReduced(), last = null, raf = null;
+  var userPaused = false;
+  var scrub = document.getElementById('scrub');
+  var playBtn = document.getElementById('play');
+  var replayBtn = document.getElementById('journeyReplay');
+  var controlsEl = document.querySelector('.controls');
+  var scrubTimer = null;
+  var sceneEl = document.querySelector('.scene');
+
+  function scheduleClock(){
+    if (playing && !document.hidden && !isReduced() && raf === null) raf = requestAnimationFrame(loop);
+  }
+
+  function loop(ts){
+    raf = null;
+    if (!playing || document.hidden || isReduced()) return;
+    if (last === null) last = ts;
+    t = Math.min(MODEL.duration,t+(ts-last)/1000);
+    last = ts;
+    scrub.value = String(Math.round(t*10));
+    applyPhase(t);
+    if (t >= MODEL.duration){ playing = false; paintPlayButton(); }
+    scheduleClock();
+  }
+
+  function paintPlayButton(){
+    var paused = !playing || document.hidden || isReduced();
+    sceneEl.dataset.motionPaused = String(paused);
+    document.body.classList.toggle('atlas-motion-paused',paused);
+    packetMotions.forEach(function(animation){ if (paused) animation.pause(); else animation.play(); });
+    if (paused && raf !== null){ cancelAnimationFrame(raf); raf = null; }
+    playBtn.innerHTML = playing ? '&#10073;&#10073;' : '&#9654;';
+    var action = isReduced() ? 'Reduced motion: static route' : playing ? 'Pause map motion' : t >= MODEL.duration ? 'Replay map motion' : 'Resume map motion';
+    playBtn.setAttribute('aria-label',action);
+    playBtn.setAttribute('title',action);
+    playBtn.disabled = isReduced();
+    scrub.disabled = isReduced();
+    replayBtn.textContent = isReduced() ? 'Final state' : 'Replay';
+    replayBtn.setAttribute('aria-label',isReduced() ? 'Show final illustrated route (reduced motion)' : 'Replay illustrated courier route');
+  }
+
+  scrub.addEventListener('input', function(e){
+    if (ignoreLiveScrub && !e.isTrusted){ scrub.value = String(Math.round(t*10)); return; }
+    t = isReduced() ? MODEL.duration : Number(scrub.value)/10;
+    scrub.value = String(Math.round(t*10));
+    playing = false;
+    if (e.isTrusted) userPaused = true;
+    if (!e.isTrusted) lastPhase = -1; /* live refresh: re-render copy without replaying the entrance */
+    paintPlayButton();
+    applyPhase(t);
+    controlsEl.classList.add('is-scrubbing');
+    scrub.setAttribute('aria-valuetext',elClock.textContent+' — illustrated route — '+journeyStep.textContent);
+    clearTimeout(scrubTimer);
+    scrubTimer = setTimeout(function(){ controlsEl.classList.remove('is-scrubbing'); },220);
+  });
+
+  function replayJourney(){
+    userPaused = false;
+    t = isReduced() ? MODEL.duration : 0;
+    playing = !isReduced();
+    last = null;
+    lastPhase = -1;
+    scrub.value = String(Math.round(t*10));
+    applyPhase(t);
+    paintPlayButton();
+    scheduleClock();
+  }
+  replayBtn.addEventListener('click',replayJourney);
+  playBtn.addEventListener('click', function(){
+    if (t >= MODEL.duration){ replayJourney(); return; }
+    playing = !playing;
+    userPaused = !playing;
+    paintPlayButton();
+    last = null;
+    scheduleClock();
+  });
+
+  document.addEventListener('visibilitychange', function(){
+    last = null;
+    paintPlayButton();
+    scheduleClock();
+  });
+  if (motionQuery.addEventListener) motionQuery.addEventListener('change', function(){
+    if (isReduced()){ t = MODEL.duration; playing = false; }
+    last = null;
+    scrub.value = String(Math.round(t*10));
+    applyPhase(t);
+    paintPlayButton();
+  });
+
+  document.addEventListener('keydown', function(e){
+    var target = e.target;
+    var isControl = target && target.closest && target.closest('button,input,a,summary,[role="button"],[contenteditable="true"]');
+    if (e.code === 'Space' && !isControl){ e.preventDefault(); playBtn.click(); }
+  });
+
+  /* Only the council health snapshot may label the source as live. */
+
+  /* lede stagger */
+  document.querySelectorAll('.lede').forEach(function(p){
+    p.querySelectorAll('.l > span').forEach(function(sp, i){
+      sp.style.animationDelay = (.28 + i*.06).toFixed(3) + 's';
+    });
+  });
+
+  /* legend -> island spotlight */
+  document.querySelectorAll('.legend .row[data-island]').forEach(function(row){
+    var id = row.getAttribute('data-island');
+    if (!groups[id]) return;
+    row.addEventListener('mouseenter', function(){ groups[id].g.classList.add('spot'); });
+    row.addEventListener('mouseleave', function(){ groups[id].g.classList.remove('spot'); });
+    row.addEventListener('focus', function(){ groups[id].g.classList.add('spot'); });
+    row.addEventListener('blur', function(){ groups[id].g.classList.remove('spot'); });
+  });
+
+  /* parallax */
+  if (window.matchMedia('(pointer: fine)').matches && !isReduced()) {
+    var tx=0,ty=0,cx=0,cy=0,praf=null;
+    function tick(){
+      if (!playing || isReduced() || document.hidden){ praf = null; return; }
+      cx += (tx-cx)*0.08; cy += (ty-cy)*0.08;
+      document.documentElement.style.setProperty('--mx', cx.toFixed(4));
+      document.documentElement.style.setProperty('--my', cy.toFixed(4));
+      if (Math.abs(tx-cx)>0.001 || Math.abs(ty-cy)>0.001) praf = requestAnimationFrame(tick);
+      else praf = null;
+    }
+    window.addEventListener('mousemove', function(e){
+      if (!playing || isReduced() || document.hidden) return;
+      tx = (e.clientX/window.innerWidth)-0.5;
+      ty = (e.clientY/window.innerHeight)-0.5;
+      if (!praf) praf = requestAnimationFrame(tick);
+    }, {passive:true});
+  }
+
+  /* ============ DAY / NIGHT ============ */
+  function applySky(t){
+    var hour = (t / MODEL.duration) * 24;
+    var b = (Math.cos((hour - 12) / 24 * 2 * Math.PI) + 1) / 2;   /* 1 at noon, 0 at midnight */
+    var night = 1 - b;
+    var warm = Math.pow(Math.abs(Math.cos((hour - 6) / 24 * 2 * Math.PI)), 3); /* peaks at dawn & dusk */
+    var br = (0.68 + 0.32 * b).toFixed(3);
+    var sat = (0.85 + 0.20 * b).toFixed(3);
+    var f = 'brightness(' + br + ') saturate(' + sat + ')';
+    if (night > 0.5) f += ' hue-rotate(' + ((night - 0.5) * 28).toFixed(1) + 'deg)';
+    if (warm > 0.05) f += ' sepia(' + (warm * 0.22).toFixed(3) + ')';
+    svg.style.filter = f;
+    var above = hour > 6 && hour < 18;
+    var posH = above ? (hour - 6) / 12 : (hour >= 18 ? (hour - 18) / 12 : (hour + 6) / 12);
+    var cx = 90 + posH * 580;
+    var cy = 300 - (1 - Math.pow((posH - 0.5) * 2, 2)) * 250;
+    if (above){ sun.setAttribute('transform','translate('+cx+','+cy+')'); sun.style.opacity = 1; moon.style.opacity = 0; }
+    else { moon.setAttribute('transform','translate('+cx+','+cy+')'); moon.style.opacity = 1; sun.style.opacity = 0; }
+    stars.style.opacity = night.toFixed(3);
+  }
+
+  /* ============ ATTACK SURFACE ============ */
+  var attackOn = false;
+  var attackBtn = document.getElementById('attack');
+  attackBtn.addEventListener('click', function(){
+    attackOn = !attackOn;
+    document.body.classList.toggle('attack', attackOn);
+    attackBtn.classList.toggle('on', attackOn);
+    attackBtn.setAttribute('aria-pressed', String(attackOn));
+    applyPhase(curT);
+    /* phase index is unchanged, so refresh the framed copy explicitly */
+    scramble(elState, curNote);
+    updateTicker(phaseAt(curT), attackOn);
+  });
+
+  /* ============ INSPECT PANEL ============ */
+  var curT = 8.6, curNote = '';
+  var panel = document.getElementById('panel');
+  var panelClose = document.getElementById('panelClose');
+  var panelTitle = document.getElementById('panelTitle');
+  var panelBody = document.getElementById('panelBody');
+  var panelNote = document.getElementById('panelNote');
+  var panelReturnFocus = null;
+  function closePanel(){
+    if (!panel.classList.contains('open')) return;
+    panel.classList.remove('open');
+    panel.inert = true;
+    panel.setAttribute('aria-hidden','true');
+    if (panelReturnFocus && panelReturnFocus.isConnected) panelReturnFocus.focus();
+    panelReturnFocus = null;
+  }
+  function openPanel(id){
+    var c = null;
+    for (var i=0;i<MODEL.chains.length;i++) if (MODEL.chains[i].id === id) c = MODEL.chains[i];
+    if (!c) return;
+    var st = groups[id].state || 'live';
+    var nice = c.label.charAt(0) + c.label.slice(1).toLowerCase();
+    panelTitle.textContent = nice;
+    var health = st === 'dark' ? 0 : (st === 'degraded' ? 58 : 99);
+    var myLinks = MODEL.links.filter(function(l){ return l.from === id || l.to === id; });
+    var openLinks = 0;
+    myLinks.forEach(function(l){ var ls = (phaseAt(curT).links[l.id]) || 'idle'; if (ls === 'open') openLinks++; });
+    var rows = [
+      ['Type', id === 'settlement' ? 'Treasury' : (id === 'dao' ? 'Council' : (id === 'rollup' ? 'Agent' : 'World ID'))],
+      ['Status', st === 'dark' ? 'Dark' : (st === 'degraded' ? 'Degraded' : 'Live')],
+      ['Open links', openLinks + ' / ' + myLinks.length]
+    ];
+    var html = rows.map(function(r){ return '<dt>' + r[0] + '</dt><dd>' + r[1] + '</dd>'; }).join('');
+    html += '<dt>Finality</dt><dd><div class="bar"><span style="width:' + health + '%"></span></div></dd>';
+    panelBody.innerHTML = html;
+    panelNote.textContent = curNote || '—';
+    panelReturnFocus = document.activeElement;
+    panel.inert = false;
+    panel.classList.add('open'); panel.setAttribute('aria-hidden','false');
+    panelClose.focus();
+  }
+  panelClose.addEventListener('click', closePanel);
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closePanel(); });
+  MODEL.chains.forEach(function(c){
+    var island = groups[c.id].g;
+    island.style.cursor = 'pointer';
+    island.setAttribute('tabindex','0');
+    island.setAttribute('role','button');
+    island.setAttribute('aria-label','Inspect ' + c.label.toLowerCase());
+    island.addEventListener('click', function(e){ e.stopPropagation(); openPanel(c.id); });
+    island.addEventListener('keydown', function(e){
+      if (e.key === 'Enter' || e.code === 'Space'){
+        e.preventDefault(); e.stopPropagation(); openPanel(c.id);
+      }
+    });
+  });
+  document.querySelectorAll('.legend .row[data-island]').forEach(function(row){
+    row.style.cursor = 'pointer';
+    row.addEventListener('click', function(){ openPanel(row.getAttribute('data-island')); });
+  });
+
+  /* ============ HANDOFF TO THE EDITORIAL ============ */
+  var handoff = document.getElementById('handoff');
+  var hcurtain = document.getElementById('handoffCurtain');
+  var handoffFill = document.getElementById('handoffFill');
+  var leaving = false;
+
+  function goEditorial(){
+    if (leaving) return;
+    leaving = true;
+    if (hcurtain && !isReduced()) hcurtain.classList.add('go');
+    setTimeout(function(){ location.href = (document.getElementById('ctaReport') || {}).href || '/report.html?from=atlas'; }, isReduced() ? 0 : 640);
+  }
+
+  if (handoff){
+    if ('IntersectionObserver' in window){
+      new IntersectionObserver(function(es){
+        es.forEach(function(e){ if (e.isIntersecting) handoff.classList.add('in'); });
+      }, { threshold: 0.22 }).observe(handoff);
+    }
+    var cta = handoff.querySelector('.handoff-cta');
+    if (cta) cta.addEventListener('click', function(e){ e.preventDefault(); goEditorial(); });
+
+    var dwell = null;
+    var hScroll = function(){
+      var r = handoff.getBoundingClientRect();
+      var vh = window.innerHeight;
+      var p = Math.min(1, Math.max(0, (vh - r.top) / (vh + r.height)));
+      if (handoffFill) handoffFill.style.width = (p * 100).toFixed(1) + '%';
+      /* wait until the section is essentially full-screen, then give it a beat */
+      if (!leaving && r.top < vh * 0.06){
+        if (!dwell) dwell = setTimeout(goEditorial, 650);
+      } else if (dwell){ clearTimeout(dwell); dwell = null; }
+    };
+    window.addEventListener('scroll', hScroll, { passive: true });
+    hScroll();
+  }
+
+  /* Keep live technical references available, but behind a keyboard-native disclosure. */
+  var techCol = document.querySelector('.footer .col:nth-child(3)');
+  var techFoldQueued = false;
+  function foldTechnical(){
+    techFoldQueued = false;
+    if (!techCol || techCol.querySelector('.tech-details')) return;
+    var label = techCol.querySelector('.label');
+    var title = label ? label.textContent : 'Reading';
+    var content = Array.prototype.slice.call(techCol.childNodes).filter(function(n){ return n !== label; });
+    if (!content.length) return;
+    var details = document.createElement('details');
+    details.className = 'tech-details';
+    var summary = document.createElement('summary');
+    var summaryLabel = document.createElement('span');
+    summaryLabel.className = 'label';
+    summaryLabel.textContent = title + ' · technical';
+    summary.appendChild(summaryLabel);
+    details.appendChild(summary);
+    content.forEach(function(n){ details.appendChild(n); });
+    techCol.replaceChildren(details);
+  }
+  if (techCol) new MutationObserver(function(){
+    if (techFoldQueued) return;
+    techFoldQueued = true;
+    requestAnimationFrame(foldTechnical);
+  }).observe(techCol, { childList:true });
+
+  /* The shared live loader replaces this column only when proposals/decisions change. */
+  var councilCol = document.querySelector('.footer .col:nth-child(1)');
+  var knownProposalCount = null;
+  function readLiveProposalState(){
+    if (!councilCol) return;
+    var match = councilCol.textContent.match(/Proposals\s+(\d+)/i);
+    if (!match) return;
+    var count = Number(match[1]);
+    var isNew = knownProposalCount !== null && count > knownProposalCount;
+    knownProposalCount = count;
+    if (isNew){
+      proposalArrival.classList.remove('arrived');
+      if (!isReduced()) void proposalArrival.offsetWidth;
+      proposalArrival.classList.add('arrived');
+      replayState(groups.settlement.g, 'proposal-in');
+    }
+    var toast = document.getElementById('toast');
+    if (!toast || !toast.textContent) return;
+    if (toast.classList.contains('pass')) emphasizeDecision('pass');
+    else if (/\b(REFUSED|CANCELLED)\b/.test(toast.textContent)) emphasizeDecision('fail');
+  }
+  if (councilCol) new MutationObserver(readLiveProposalState).observe(councilCol, { childList:true });
+
+  window.addEventListener('council:atlas',function(event){ acceptAtlas(event.detail); });
+  /* The loader may finish before the courier module: consume its initial snapshot too. */
+  if (window.COUNCIL_ATLAS) acceptAtlas(window.COUNCIL_ATLAS);
+  import('/assets/council-scene.js').then(function(module){
+    pet.innerHTML = module.agentMarkup(); /* trusted, local SVG factory; no proposal HTML */
+    courier.hidden = false;
+    paintJourney(t);
+    paintPlayButton();
+  }).catch(function(){
+    courier.hidden = true;
+    journeyStep.textContent = 'Courier unavailable; the illustrated timeline still works.';
+  });
+
+  scrub.value = String(Math.round(t * 10));
+  applyPhase(t);
+  paintPlayButton();
+  scheduleClock();
+})();
 </script>
-</body></html>
+<script type="module" src="/assets/live-original.js"></script>
+</body>
+</html>

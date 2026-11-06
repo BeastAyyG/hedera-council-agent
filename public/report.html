@@ -1,84 +1,1301 @@
 <!doctype html>
-<html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Council Agent · Report</title><link rel="icon" href="data:,">
-<link rel="stylesheet" href="/assets/theme.css">
-</head><body data-page="report" data-state="loading">
-<div class="frame">
-  <aside class="vrail"><span>Council</span></aside>
-  <div class="stage">
-    <header class="top" id="top"></header>
-    <main>
-      <!-- REPORT POSTER: left numeral = what the proposal said, right numeral = what the chain will do. They differ on a mismatch. -->
-      <div class="poster">
-        <div>
-          <p class="bignum" id="num-described" aria-label="Described amount"></p>
-          <div class="numcap">Described · <b id="payee-described"></b></div>
-        </div>
-        <div class="mid">
-          <svg class="badge-ring" viewBox="0 0 100 100" aria-hidden="true"><defs><path id="ring" d="M50,50 m-38,0 a38,38 0 1,1 76,0 a38,38 0 1,1 -76,0"/></defs><text><textPath href="#ring">Decision integrity · council agent · decision integrity · </textPath></text><circle cx="50" cy="50" r="2" fill="#df3d2a"/></svg>
-          <svg class="scene" id="scene" viewBox="55 40 190 150" role="img" aria-label="Pixel island"></svg>
-          <div class="stamp" id="stamp" data-decision="PENDING">Pending<small>agent decision</small></div>
-        </div>
-        <div>
-          <p class="bignum" id="num-actual" aria-label="Actual transfer amount"></p>
-          <div class="numcap">Actual transfer · <b id="payee-actual"></b></div>
-        </div>
-      </div>
-      <div class="poster-foot" style="display:grid;grid-template-columns:1fr 1fr;gap:28px;padding:0 0 12px;border-bottom:1px solid var(--rule)">
-        <p class="shout" id="verdict" style="font-size:14px;margin:0 0 12px"></p>
-        <div><p class="shout" id="reason" style="font-size:11px;margin:0 0 12px"></p><p class="actions" style="margin:0"><a class="btn secondary" id="open-console" href="/console.html">Open in console</a> <a class="btn secondary" href="/">Back to atlas</a></p></div>
-      </div>
-    </main>
-    <div class="ticker" id="ticker"></div>
-    <section class="cols4" id="cols"></section>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="icon" href="data:," />
+<link rel="stylesheet" href="/assets/motion.css" />
+<link rel="stylesheet" href="/assets/council-scene.css" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="Council Agent — one proposal, described against the transfer that is actually on Hedera." />
+<meta name="color-scheme" content="light" />
+<meta name="theme-color" content="#f2efe7" />
+<title>Council Agent — Report</title>
+<style>
+  :root{
+    --paper:#f2efe7;
+    --ink:#111110;
+    --red:#e23b28;
+    --muted:#8b857a;
+    --hair:#d8d3c6;
+    --ghost:#ffffff;
+    --mx:0;
+    --my:0;
+    color-scheme:light;
+  }
+  *{box-sizing:border-box;}
+  [hidden]{display:none!important;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Helvetica Neue",Helvetica,Arial,system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+  }
+  .label{
+    font-family:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:9px;
+    letter-spacing:.15em;
+    text-transform:uppercase;
+    color:var(--muted);
+    transition:color .25s ease;
+  }
+  .sheet{
+    position:relative;
+    min-height:100vh;
+    padding:32px 46px 26px 92px;
+    display:flex;
+    flex-direction:column;
+  }
+
+  /* ---- curtain ---- */
+  .curtain{
+    position:fixed;inset:0;z-index:90;
+    background:var(--red);
+    display:grid;place-items:center;
+    pointer-events:none;
+    animation:wipe .8s cubic-bezier(.77,0,.18,1) .25s forwards;
+  }
+  .curtain-mark{
+    color:var(--paper);
+    font-size:clamp(22px,3.4vw,44px);
+    font-weight:700;
+    letter-spacing:.34em;
+    text-indent:.34em;
+    animation:mark .45s ease both;
+  }
+  @keyframes wipe{to{transform:translateY(-101%);}}
+  @keyframes mark{from{opacity:0;letter-spacing:.5em;}to{opacity:1;letter-spacing:.34em;}}
+  /* keep the handoff title card static across the atlas -> editorial cut */
+  .from-atlas .curtain-mark{animation:none;opacity:1;letter-spacing:.32em;text-indent:.32em;}
+
+  /* ---- grain ---- */
+  .grain{
+    position:fixed;inset:0;z-index:80;pointer-events:none;opacity:.05;
+    transform:translateZ(0); /* PERF: own compositor layer — noise tile rasterizes once instead of repainting over animating content */
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ---- left rail ---- */
+  .rail{position:absolute;left:24px;top:32px;bottom:26px;width:44px;
+        display:flex;flex-direction:column;align-items:center;z-index:4;}
+  .wordmark{writing-mode:vertical-rl;transform:rotate(180deg);
+            font-size:15px;font-weight:700;letter-spacing:.3em;}
+  .rail-rule{width:1px;flex:1;background:var(--hair);margin:14px 0;
+             transform-origin:top;animation:grow 1s cubic-bezier(.77,0,.18,1) .95s both;}
+  @keyframes grow{from{transform:scaleY(0);}to{transform:scaleY(1);}}
+  .rail-meta{writing-mode:vertical-rl;transform:rotate(180deg);
+             font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+             font-size:8px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);}
+
+  /* ---- right rail ---- */
+  .rail-r{position:absolute;right:22px;top:32px;bottom:26px;width:44px;
+          display:flex;flex-direction:column;align-items:center;gap:16px;z-index:4;}
+  .rail-r .dot{width:7px;height:7px;border-radius:50%;background:var(--red);
+               animation:pulse 2.4s ease-in-out 2.2s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.25;}}
+  .rail-r .est{writing-mode:vertical-rl;transform:rotate(180deg);
+               font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+               font-size:8px;letter-spacing:.24em;text-transform:uppercase;color:var(--muted);}
+
+  /* ---- top ---- */
+  .topbar{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:20px;align-items:start;
+          animation:fade .9s ease .85s both;}
+  .menu a{display:block;font-size:10.5px;line-height:1.78;letter-spacing:.07em;
+          text-transform:uppercase;color:var(--ink);text-decoration:none;position:relative;
+          width:max-content;}
+  .menu a::before{content:"";position:absolute;left:-14px;top:calc(50% - .5px);
+                  width:0;height:1px;background:var(--red);transition:width .3s ease;}
+  .menu a:hover{color:var(--red);}
+  .menu a:hover::before{width:10px;}
+  .menu-title{margin-bottom:7px;}
+  .topval{margin:6px 0 0;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+          font-size:10.5px;letter-spacing:.05em;display:flex;align-items:center;gap:7px;}
+  .topval .live{width:6px;height:6px;border-radius:50%;background:var(--red);
+                animation:pulse 2.4s ease-in-out 2.2s infinite;flex:0 0 auto;}
+  .right{text-align:right;}
+  .right .topval{justify-content:flex-end;}
+  @keyframes fade{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:none;}}
+
+  /* ---- hero ---- */
+  .hero{
+    position:relative;
+    flex:1;
+    display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(0,1.25fr) minmax(280px,30%);
+    align-items:center;
+    gap:0;
+    padding:26px 0 20px;
+  }
+
+  .numeral{
+    font-size:clamp(104px,15.6vw,236px);
+    line-height:.76;
+    font-weight:700;
+    letter-spacing:-.05em;
+    color:var(--ghost);
+    user-select:none;
+    font-variant-numeric:tabular-nums;
+    font-feature-settings:"tnum" 1;
+    will-change:transform;
+    animation:breathe 11s ease-in-out infinite alternate;
+  }
+  .numeral.left{text-align:center;
+    transform:translate(calc(var(--mx)*-12px),calc(var(--my)*-8px));}
+  .numeral.right{text-align:left;
+    transform:translate(calc(var(--mx)*-7px),calc(var(--my)*-5px));}
+
+  .art{display:flex;align-items:center;justify-content:center;
+       transform:translate(calc(var(--mx)*9px),calc(var(--my)*6px));
+       will-change:transform;} /* PERF: parallax retargets this transform every frame — keep it composited */
+  .art-in{animation:fade 1s ease 1.05s both;width:min(100%,348px);}
+  .art svg{width:100%;height:auto;display:block;}
+
+  .stack{
+    position:relative;
+    display:flex;flex-direction:column;justify-content:center;gap:26px;
+    padding-left:26px;
+    transform:translate(calc(var(--mx)*-6px),calc(var(--my)*-4px));
+    will-change:transform; /* PERF: parallax retargets this transform every frame — avoid repainting the text stack */
+  }
+  .statement{
+    margin:0;
+    font-size:clamp(10.5px,1.02vw,14px);
+    line-height:1.26;
+    font-weight:700;
+    letter-spacing:.014em;
+    text-transform:uppercase;
+    color:var(--red);
+  }
+  .statement .l{display:block;overflow:hidden;}
+  .statement .l>span{display:block;transform:translateY(112%);
+                     animation:rise .8s cubic-bezier(.2,.75,.2,1) both;}
+  @keyframes rise{to{transform:translateY(0);}}
+
+  .numeral.right{margin:-6px 0 -2px 0;}
+
+  .and{
+    position:absolute;left:-12px;top:50%;
+    transform:translate(-50%,-50%);
+    font-size:12px;font-weight:700;letter-spacing:.26em;text-transform:uppercase;
+    color:var(--red);background:var(--paper);padding:3px 0;
+    animation:fade .8s ease 2.1s both;
+  }
+
+  /* rubber stamp */
+  .stamp{
+    position:absolute;left:29%;top:63%;z-index:6;
+    padding:7px 11px;
+    border:2.2px solid var(--red);
+    color:var(--red);
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+    white-space:nowrap;
+    mix-blend-mode:multiply;
+    opacity:.92;
+    animation:stamp .55s cubic-bezier(.2,1.5,.35,1) 2.15s both,
+                wobble .45s ease-out 2.72s both;
+  }
+  .stamp i{display:block;font-style:normal;font-size:7.5px;letter-spacing:.2em;
+           margin-top:3px;opacity:.85;}
+  @keyframes stamp{
+    from{opacity:0;transform:rotate(-9deg) scale(1.65);}
+    to{opacity:.92;transform:rotate(-7deg) scale(1);}
+  }
+
+  /* rotating seal */
+  .badge{
+    position:absolute;left:56%;top:5%;width:108px;height:108px;z-index:5;
+    animation:fade .9s ease 2s both;
+  }
+  .badge svg{width:100%;height:100%;animation:spin 26s linear infinite;}
+  .badge text{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+              font-size:9.2px;letter-spacing:.14em;fill:var(--ink);}
+  .badge .ring{fill:none;stroke:var(--hair);stroke-width:1;stroke-dasharray:2 4;}
+  .badge .pip{fill:var(--red);}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  /* ---- pixel island ---- */
+  #island .cell{transform-box:fill-box;transform-origin:center;
+                animation:pop .5s cubic-bezier(.2,1.4,.4,1) both;shape-rendering:crispEdges;}
+  #island .sprite{animation:spriteIn .7s ease both;}
+  #island .smoke-puff{animation:puff 2.8s ease-out infinite;}
+  #island .smoke-puff rect{shape-rendering:crispEdges;}
+  #island .walker{animation:walk 13s ease-in-out infinite alternate;}
+  #island .bell{transform-box:fill-box;transform-origin:50% 100%;
+                animation:sway 3.4s ease-in-out infinite alternate;}
+  #island .shimmer{animation:shimmer 3.6s steps(2,end) infinite;}
+  @keyframes pop{from{transform:scale(0);}to{transform:scale(1);}}
+  @keyframes spriteIn{from{opacity:0;}to{opacity:1;}}
+  @keyframes puff{0%{transform:translate(0,0);opacity:0;}16%{opacity:.95;}
+                  100%{transform:translate(-8px,-54px);opacity:0;}}
+  @keyframes walk{from{transform:translateX(-13px);}to{transform:translateX(16px);}}
+  @keyframes sway{from{transform:rotate(-3.5deg);}to{transform:rotate(3.5deg);}}
+  @keyframes shimmer{0%,100%{opacity:.4;}50%{opacity:.95;}}
+
+  #island .flame{transform-box:fill-box;transform-origin:50% 100%;
+                animation:flicker 1s steps(3,end) infinite;}
+  #island .floater{animation:float 5.5s ease-in-out infinite alternate;}
+  #island .cloud{animation:drift 27s ease-in-out infinite alternate;}
+  #island .boat{animation:bob 11s ease-in-out infinite alternate;}
+  #island .twinkle{animation:twinkle 3.2s ease-in-out infinite,
+                             driftY 7s ease-in-out infinite alternate;}
+  @keyframes flicker{0%,100%{transform:scaleY(1);opacity:1;}
+                     50%{transform:scaleY(.82);opacity:.85;}}
+  @keyframes float{from{transform:translate(-7px,4px);}to{transform:translate(9px,-8px);}}
+  @keyframes drift{from{transform:translateX(-18px);}to{transform:translateX(26px);}}
+  @keyframes bob{from{transform:translateX(-14px);}to{transform:translateX(24px);}}
+  @keyframes twinkle{0%,100%{opacity:.15;}50%{opacity:1;}}
+  @keyframes driftY{from{transform:translate(0,0);}to{transform:translate(5px,-8px);}}
+
+  /* nested wrappers so animation never fights a positioning transform attribute */
+  #island .rv{animation:idle .45s ease-in-out infinite;}
+  #island .tree{transform-box:fill-box;transform-origin:50% 100%;
+                animation:treeSway 4.6s ease-in-out infinite alternate;}
+  #island .wingL{transform-box:fill-box;transform-origin:100% 50%;
+                 animation:flap .3s ease-in-out infinite;}
+  #island .wingR{transform-box:fill-box;transform-origin:0% 50%;
+                 animation:flap .3s ease-in-out infinite;}
+  #island .legA{animation:stepA .72s steps(2,end) infinite;}
+  #island .legB{animation:stepB .72s steps(2,end) infinite;}
+  #island .ripple{transform-box:fill-box;transform-origin:center;
+                  animation:ripple 4.4s ease-out infinite;}
+  @keyframes idle{0%,100%{transform:translateY(0);}50%{transform:translateY(-1px);}}
+  @keyframes treeSway{from{transform:rotate(-1.3deg);}to{transform:rotate(1.3deg);}}
+  @keyframes flap{0%,100%{transform:scaleX(1);}50%{transform:scaleX(.55);}}
+  @keyframes stepA{0%,100%{transform:translateY(0);}50%{transform:translateY(-2px);}}
+  @keyframes stepB{0%,100%{transform:translateY(-2px);}50%{transform:translateY(0);}}
+  @keyframes ripple{0%{transform:scale(.35);opacity:.6;}
+                    100%{transform:scale(2.1);opacity:0;}}
+
+  /* seal counter-rotation + stamp settle + numeral breathe */
+  .badge .counter{transform-box:fill-box;transform-origin:center;
+                  animation:spinBack 19s linear infinite;}
+  @keyframes spinBack{to{transform:rotate(-360deg);}}
+  @keyframes wobble{0%{transform:rotate(-7deg) scale(1);}
+                    45%{transform:rotate(-5.1deg) scale(1.012);}
+                    100%{transform:rotate(-7deg) scale(1);}}
+  @keyframes breathe{from{opacity:1;}to{opacity:.955;}}
+  @keyframes ruleIn{to{transform:scaleX(1);}}
+
+  /* plate caption under the illustration */
+  .plate{position:relative;margin:12px 0 0;padding-top:9px;
+         font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+         font-size:8px;letter-spacing:.18em;text-transform:uppercase;
+         color:var(--muted);text-align:center;animation:fade .8s ease 2.35s both;}
+  .plate::before{content:"";position:absolute;left:0;right:0;top:0;height:1px;
+                 background:var(--hair);transform:scaleX(0);transform-origin:center;
+                 animation:ruleIn .9s cubic-bezier(.77,0,.18,1) 2.4s both;}
+
+  /* registration marks */
+  .mark{position:absolute;width:11px;height:11px;opacity:.55;z-index:3;
+        animation:fade 1s ease 1.85s both;}
+  .mark::before,.mark::after{content:"";position:absolute;background:#c3bdb0;}
+  .mark::before{left:5px;top:0;width:1px;height:11px;}
+  .mark::after{top:5px;left:0;height:1px;width:11px;}
+  .mark.tl{left:6px;top:2px;} .mark.tr{right:6px;top:2px;}
+  .mark.bl{left:6px;bottom:2px;} .mark.br{right:6px;bottom:2px;}
+
+  /* ---- footer ---- */
+  .footer{display:grid;grid-template-columns:1.1fr .95fr 1.15fr .8fr;gap:24px;
+          border-top:1px solid var(--hair);padding-top:13px;}
+  .col{animation:fade .9s ease both;}
+  .col:nth-child(1){animation-delay:1.6s;}
+  .col:nth-child(2){animation-delay:1.7s;}
+  .col:nth-child(3){animation-delay:1.8s;}
+  .col:nth-child(4){animation-delay:1.9s;}
+  .col .label{margin-bottom:8px;}
+  .col:hover .label{color:var(--red);}
+  .col p{margin:0;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+         font-size:9px;line-height:1.7;color:var(--ink);}
+  .col p span{color:var(--muted);transition:color .25s ease;}
+  .col:hover p span{color:var(--ink);}
+  .col p b{font-weight:600;}
+
+  /* ---- site-wide motion (ported from the archipelago) ---- */
+  .progress{position:fixed;top:0;left:0;right:0;height:2px;background:transparent;z-index:85;}
+  .progress span{display:block;height:2px;width:0;background:var(--red);transition:width .1s linear;}
+
+  .ticker{overflow:hidden;border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);
+    padding:7px 0;margin:6px 0 2px;}
+  .ticker-track{display:flex;width:max-content;animation:marquee 42s linear infinite;}
+  .ticker:hover .ticker-track{animation-play-state:paused;}
+  .ticker-track span{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:8.5px;
+    letter-spacing:.18em;text-transform:uppercase;color:var(--muted);white-space:nowrap;}
+  @keyframes marquee{from{transform:translateX(0);}to{transform:translateX(-50%);}}
+
+  .statusbar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+    border-top:1px solid var(--hair);padding-top:12px;margin-top:6px;
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:9px;
+    letter-spacing:.12em;text-transform:uppercase;color:var(--muted);}
+  .statusbar .dot{width:6px;height:6px;border-radius:50%;background:var(--red);flex:0 0 auto;
+    animation:pulse 2.4s ease-in-out 2.2s infinite;}
+  .statusbar .statusline{color:var(--ink);flex:1;min-width:160px;}
+  .statusbar .metric{display:flex;align-items:center;gap:7px;}
+  .statusbar .metric b{color:var(--ink);font-weight:600;}
+
+  .bump{display:inline-block;animation:bump .38s ease;}
+  @keyframes bump{0%{transform:scale(1);}45%{transform:scale(1.2);color:var(--red);}
+    100%{transform:scale(1);}}
+  .topval .live.flash{animation:dotFlash .55s ease;}
+  @keyframes dotFlash{0%{box-shadow:0 0 0 0 rgba(226,59,40,.55);}
+    100%{box-shadow:0 0 0 11px rgba(226,59,40,0);}}
+
+  /* legend spotlight on the pixel island */
+  #island .spot{filter:saturate(1.3) brightness(1.07);transition:filter .3s ease;}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:8.5px;
+    letter-spacing:.1em;text-transform:uppercase;color:#3f3b34;}
+  .legend .row{display:flex;align-items:center;gap:6px;cursor:pointer;
+    transition:color .2s ease,transform .2s ease;}
+  .legend .row:hover{color:var(--red);transform:translateX(3px);}
+  .legend .sw{width:9px;height:9px;flex:0 0 auto;}
+
+
+  /* ---- verdict-story refinement: one measured, readable sequence ---- */
+  :root{--muted-ink:#686259;--red-ink:#b52d20;--pass-ink:#2f6f38;}
+  :where(a,button,summary,[tabindex]):focus-visible{
+    outline:2px solid var(--red-ink);outline-offset:4px;
+  }
+  a{color:inherit;text-decoration-thickness:1px;text-underline-offset:3px;}
+  a:hover{color:var(--red-ink);}
+  .label,.rail-meta,.rail-r .est,.plate,.statusbar,.col p span{color:var(--muted-ink);}
+  .curtain{animation:wipe .42s cubic-bezier(.77,0,.18,1) .04s forwards;}
+  .curtain-mark{animation:mark .3s ease both;}
+  .rail-rule{animation:grow .45s cubic-bezier(.77,0,.18,1) .14s both;}
+  .topbar{animation:fade .42s ease .12s both;}
+  .wordmark,.rail-meta{animation:fade .35s ease .06s both;}
+
+  .hero{grid-template-columns:minmax(0,1.05fr) minmax(250px,1.1fr) minmax(280px,.95fr);
+        padding:22px 0 18px;}
+  .amount{position:relative;width:100%;min-width:0;max-width:100%;}
+  .amount.left{text-align:center;animation:amountLeftIn .46s cubic-bezier(.2,.75,.2,1) .26s both;}
+  .amount.right{text-align:left;animation:amountRightIn .46s cubic-bezier(.2,.75,.2,1) .58s both;}
+  .amount-label{display:block;margin:0 0 14px;font:9px/1.4 ui-monospace,Menlo,Consolas,monospace;
+    letter-spacing:.17em;text-transform:uppercase;color:var(--muted-ink);}
+  .amount.right .amount-label{margin-top:18px;}
+  .numeral{color:var(--ink);font-size:clamp(88px,12.5vw,196px);line-height:.8;
+    white-space:nowrap;max-width:100%;}
+  .numeral.right{margin:0;}
+  .hero[data-state="mismatch"] .amount.left{--split:-7px;}
+  .hero[data-state="mismatch"] .amount.right{--split:7px;}
+  .hero[data-state="mismatch"] .numeral.left{color:#504b43;}
+  .hero[data-state="mismatch"] .numeral.right{color:var(--red);}
+  .hero[data-state="match"] .amount.right .amount-label{color:var(--pass-ink);}
+  @keyframes amountLeftIn{from{opacity:0;transform:translateY(14px);}
+    to{opacity:1;transform:translateX(var(--split,0));}}
+  @keyframes amountRightIn{from{opacity:0;transform:translateY(14px);}
+    to{opacity:1;transform:translateX(var(--split,0));}}
+
+  .art-in{animation:fade .48s ease .4s both;}
+  .stack{min-width:0;gap:18px;padding-left:24px;}
+  .statement{max-width:35ch;color:var(--red-ink);font-size:clamp(11px,1vw,14px);line-height:1.34;}
+  .statement .l>span{animation:rise .44s cubic-bezier(.2,.75,.2,1) both;}
+  .difference{min-height:2.8em;margin:0;max-width:38ch;padding-top:10px;border-top:1px solid var(--hair);
+    font:9px/1.55 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--muted-ink);animation:fade .4s ease .82s both;}
+  .hero[data-state="mismatch"] .difference{color:var(--red-ink);border-top-color:var(--red);}
+  .hero[data-state="match"] .difference{color:var(--pass-ink);border-top-color:var(--pass-ink);}
+  .and{animation:fade .35s ease .78s both;}
+  .stamp{color:var(--red-ink);animation:stamp .36s cubic-bezier(.2,1.5,.35,1) .92s both,
+    wobble .3s ease-out 1.29s both;}
+  .badge{animation:fade .45s ease .76s both;}
+  .plate{color:var(--muted-ink);animation:fade .4s ease .82s both;}
+  .plate::before{animation:ruleIn .45s cubic-bezier(.77,0,.18,1) .84s both;}
+  .mark{animation:fade .4s ease .9s both;}
+  .flow{animation:fade .38s ease 1.02s both;margin:18px 0 4px;padding-top:17px;}
+  .flow .cap,.flow .node span{color:var(--muted-ink);}
+  .flow .node:not(.lit) b,.flow .node:not(.lit) span{opacity:.68;}
+  .flow .node.lit.pass b{color:var(--pass-ink);}
+  .statusbar{animation:fade .35s ease 1.12s both;margin-top:10px;}
+
+  /* Keep legacy render targets, but let the shared scene own the visible journey. */
+  #flow{display:none!important;}
+  .report-comparison,.report-journey{min-width:0;width:100%;margin:12px 0;}
+  .report-comparison{border-top:1px solid var(--hair);padding-top:14px;}
+  .report-scene-host{min-width:0;max-width:100%;}
+  .report-fallback,.report-empty{font:10px/1.7 ui-monospace,Menlo,Consolas,monospace;
+    color:var(--muted-ink);overflow-wrap:anywhere;}
+  .report-empty{display:flex;align-items:center;justify-content:space-between;gap:12px;
+    flex-wrap:wrap;border-top:1px solid var(--hair);padding:14px 0;margin:8px 0;}
+  .report-empty a{color:var(--red-ink);padding:8px 0;}
+  .topbar>div{min-width:0;}
+  #tLayer,#tProp{display:block;overflow-wrap:anywhere;line-height:1.5;}
+  .statement,.stamp,.statusline{overflow-wrap:anywhere;}
+  .stamp{max-width:65%;white-space:normal;}
+  .receipt-group+.receipt-group{border-top:1px solid var(--hair);margin-top:12px;padding-top:12px;}
+  .receipt-group h3{margin:0 0 6px;font-weight:500;}
+  .receipt-facts b{font-weight:600;}
+
+  /* The duplicated marquee remains as a live-data hook, not a second readout. */
+  .ticker[hidden]{display:none;}
+  .receipts{border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);
+    margin:10px 0 14px;animation:fade .35s ease 1.16s both;}
+  .receipts summary{display:flex;align-items:center;justify-content:space-between;gap:16px;
+    min-height:42px;cursor:pointer;list-style:none;font:9px/1.5 ui-monospace,Menlo,Consolas,monospace;
+    letter-spacing:.13em;text-transform:uppercase;color:var(--ink);}
+  .receipts summary::-webkit-details-marker{display:none;}
+  .receipts summary::before{content:"+";color:var(--red-ink);font-size:15px;line-height:1;}
+  .receipts[open] summary::before{content:"−";}
+  .receipts summary>span:first-of-type{flex:1;}
+  .receipt-summary{color:var(--muted-ink);text-align:right;letter-spacing:.08em;}
+  .receipt-body{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:20px;padding:4px 0 16px 22px;}
+  .receipt-facts{min-width:0;font:9px/1.75 ui-monospace,Menlo,Consolas,monospace;overflow-wrap:anywhere;}
+  .receipt-facts p{margin:0;}
+  .receipt-facts span{color:var(--muted-ink);}
+  .receipt-links{display:flex;flex-wrap:wrap;align-content:flex-start;justify-content:flex-end;gap:8px 16px;
+    max-width:330px;font:9px/1.7 ui-monospace,Menlo,Consolas,monospace;text-transform:uppercase;letter-spacing:.08em;}
+  .receipt-note{grid-column:1/-1;margin:0;color:var(--muted-ink);
+    font:9px/1.6 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.05em;text-transform:uppercase;}
+
+  .footer{grid-template-columns:minmax(0,1.1fr) minmax(0,.95fr) minmax(0,1.15fr) minmax(0,.8fr);
+    gap:24px;padding-top:14px;}
+  .col{min-width:0;animation:fade .35s ease both;overflow-wrap:anywhere;}
+  .col:nth-child(1){animation-delay:1.2s}.col:nth-child(2){animation-delay:1.24s}
+  .col:nth-child(3){animation-delay:1.28s}.col:nth-child(4){animation-delay:1.32s}
+  .col p{font-size:9px;line-height:1.75;}
+  .col p a{font-weight:600;}
+  .legend .row{border:0;background:transparent;padding:2px 0;font:inherit;letter-spacing:inherit;
+    text-transform:inherit;color:inherit;}
+  .legend .row:focus-visible{color:var(--red-ink);}
+  .numeral.m-shake{animation:reportMismatch .42s cubic-bezier(.36,.07,.19,.97) .82s both;}
+  @keyframes reportMismatch{20%,60%{transform:translateX(-5px);}40%,80%{transform:translateX(5px);}}
+
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation-duration:.01ms!important;animation-delay:0s!important;
+      animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important;}
+    .curtain{display:none;}
+    .topbar,.wordmark,.rail-meta,.amount,.art-in,.statement .l>span,.difference,.and,.stamp,.badge,
+    .plate,.mark,.flow,.statusbar,.receipts,.col{opacity:1!important;transform:none!important;clip-path:none!important;}
+    #island .cell{transform:scale(1)!important;}
+    .progress{display:none;}
+  }
+
+  @media (max-width:1080px){
+    .sheet{padding:26px 24px 24px 74px;}
+    .badge,.rail-r,.mark{display:none;}
+    .topbar{grid-template-columns:minmax(0,1fr) minmax(0,1fr);row-gap:16px;}
+    .hero{grid-template-columns:minmax(0,1fr);gap:22px;padding:20px 0;}
+    .numeral{font-size:clamp(80px,20vw,168px);}
+    .numeral.left,.numeral.right{text-align:center;}
+    .amount.right{text-align:center;}
+    .stack{padding-left:0;gap:16px;align-items:center;text-align:center;}
+    .statement,.difference{max-width:46ch;}
+    .stamp{position:relative;left:auto;top:auto;justify-self:center;margin:0;display:block;}
+    .and{display:none;}
+    .footer{grid-template-columns:minmax(0,1fr) minmax(0,1fr);row-gap:18px;}
+  }
+  @media (max-width:620px){
+    .statement{font-size:13px;}
+    .sheet{padding:22px 16px 20px 60px;}
+    .rail{left:14px;}
+    .hero{gap:18px;}
+    .numeral{font-size:clamp(88px,30vw,132px);}
+    .amount-label{margin-bottom:10px;}
+    .footer{grid-template-columns:minmax(0,1fr);gap:18px;}
+    .receipts summary{align-items:flex-start;flex-wrap:wrap;gap:2px 10px;padding:10px 0;}
+    .receipt-summary{flex-basis:100%;text-align:left;padding-left:0;}
+    .receipt-body{grid-template-columns:minmax(0,1fr);gap:14px;padding-left:0;}
+    .receipt-links{justify-content:flex-start;max-width:none;}
+    .receipt-note{grid-column:auto;}
+    .flow .cap{align-items:flex-start;gap:8px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="curtain" aria-hidden="true"><div class="curtain-mark">COUNCIL</div></div>
+<div class="grain" aria-hidden="true"></div>
+
+<div class="sheet">
+
+  <div class="progress" aria-hidden="true"><span id="scrollFill"></span></div>
+
+  <div class="rail">
+    <div class="wordmark">COUNCIL</div>
+    <div class="rail-rule"></div>
+    <div class="rail-meta">Agent&nbsp;·&nbsp;Report</div>
   </div>
+
+  <div class="rail-r" aria-hidden="true">
+    <div class="dot"></div>
+    <div class="est">Mumbai&nbsp;2026</div>
+  </div>
+
+  <header class="topbar">
+    <div class="menu">
+      <div class="label menu-title">Menu</div>
+      <a href="/">Atlas</a>
+      <a href="/console.html">Console</a>
+      <a href="/mandate.html">Instructions</a>
+      <a href="/council.html">Council</a>
+      <a href="/member.html">My seat</a>
+      <a href="/report.html" aria-current="page">Report</a>
+      <a href="/policy">Policy</a>
+      <a href="/audit/verify">Audit</a>
+      <a href="/verify.html">Verify log</a>
+    </div>
+    <div>
+      <div class="label">Verdict</div>
+      <p class="topval"><span class="live"></span><span id="tVerdict" aria-live="polite">Loading</span></p>
+    </div>
+    <div>
+      <div class="label">Layer</div>
+      <p class="topval" id="tLayer">&mdash;</p>
+    </div>
+    <div class="right">
+      <div class="label">Proposal</div>
+      <p class="topval" id="tProp">&mdash;</p>
+    </div>
+  </header>
+
+  <main class="hero">
+    <span class="mark tl" aria-hidden="true"></span>
+    <span class="mark tr" aria-hidden="true"></span>
+    <span class="mark bl" aria-hidden="true"></span>
+    <span class="mark br" aria-hidden="true"></span>
+
+    <div class="amount left">
+      <span class="amount-label">Described / HBAR</span>
+      <div class="numeral left" id="numL">&mdash;</div>
+    </div>
+
+    <div class="art">
+      <div class="art-in">
+      <svg id="island" viewBox="0 0 320 320" role="img"
+           aria-label="Pixel-art island: trees, a campfire, an RV with animated smoke, lily-of-the-valley flowers, butterflies, drifting clouds and a boat"></svg>
+        <p class="plate">Fig. 01 &middot; Pixel island &mdash; generated in code</p>
+        <div class="legend">
+          <button class="row" type="button" data-part="rv"><span class="sw" style="background:#f2efe7;border:1px solid #d8d3c6"></span>RV</button>
+          <button class="row" type="button" data-part="trees"><span class="sw" style="background:#3f7d3a"></span>Conifers</button>
+          <button class="row" type="button" data-part="flowers"><span class="sw" style="background:#ffffff;border:1px solid #d8d3c6"></span>Lilies</button>
+          <button class="row" type="button" data-part="boat"><span class="sw" style="background:#7a5a3a"></span>Boat</button>
+          <button class="row" type="button" data-part="fire"><span class="sw" style="background:#e2622f"></span>Fire</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <p class="statement">
+        <span class="l"><span>Loading the proposal.</span></span>
+        <span class="l"><span>No decision shown yet.</span></span>
+      </p>
+
+      <div class="amount right">
+        <span class="amount-label">Actual / HBAR</span>
+        <div class="numeral right" id="numR">&mdash;</div>
+      </div>
+
+      <p class="difference" id="amountDifference">Comparing the description with the transfer&hellip;</p>
+
+      <div class="and">and</div>
+    </div>
+
+    <div class="badge" aria-hidden="true">
+      <svg viewBox="0 0 120 120">
+        <defs><path id="circ" d="M60,60 m-45,0 a45,45 0 1,1 90,0 a45,45 0 1,1 -90,0"/></defs>
+        <circle class="ring" cx="60" cy="60" r="30"/>
+        <circle class="counter" cx="60" cy="60" r="21" fill="none"
+                stroke="#c3bdb0" stroke-width="0.8" stroke-dasharray="1 3"/>
+        <text textLength="278" lengthAdjust="spacingAndGlyphs">
+          <textPath href="#circ" startOffset="0">DECISION&#160;INTEGRITY&#160;·&#160;COUNCIL&#160;AGENT&#160;·&#160;</textPath>
+        </text>
+        <circle class="pip" cx="60" cy="60" r="3.2"/>
+      </svg>
+    </div>
+
+    <div class="stamp" aria-hidden="true"><span id="stampText">Pending</span><i id="stampSub">&mdash;</i></div>
+  </main>
+
+  <p class="report-empty" id="reportEmpty" role="status">
+    <span id="reportEmptyText">Loading the proposal record.</span>
+    <a href="/console.html">Open console</a>
+  </p>
+
+  <section class="report-comparison" id="reportComparison" aria-label="Transfer comparison" hidden>
+    <div class="report-scene-host" id="transferComparison">
+      <p class="report-fallback">Exact amounts and payees are in verification receipts.</p>
+    </div>
+  </section>
+
+  <section class="report-journey" id="reportJourneySection" aria-label="Council journey" hidden>
+    <div class="report-scene-host" id="reportJourney">
+      <p class="report-fallback">The recorded decision is in verification receipts.</p>
+    </div>
+  </section>
+
+  <section class="flow" id="flow" aria-label="Decision path" aria-hidden="true" inert hidden>
+    <div class="cap"><span>Decision path</span><span id="flowCap">&mdash;</span></div>
+    <div class="line"><span class="fill"></span><span class="packet"></span></div>
+    <div class="nodes" id="flowNodes"></div>
+  </section>
+
+  <div class="statusbar">
+    <span class="dot"></span>
+    <span class="statusline"><span id="statusText">LOADING PROPOSAL RECORD</span></span>
+    <span class="metric" hidden><span class="label">Refused</span> <b id="mFlagged">&mdash;</b></span>
+    <span class="metric" hidden><span class="label">Signed</span> <b id="mUSDC">&mdash;</b></span>
+  </div>
+
+  <div class="ticker" aria-hidden="true" hidden>
+    <div class="ticker-track"><span id="tickA"></span><span id="tickB"></span></div>
+  </div>
+
+  <details class="receipts" id="verificationReceipts">
+    <summary><span>Verification receipts</span><span class="receipt-summary" id="receiptSummary">Policy · audit · evidence</span></summary>
+    <div class="receipt-body">
+      <div class="receipt-facts" id="receiptFacts"><p>Loading the commitment record&hellip;</p></div>
+      <nav class="receipt-links" aria-label="Verification links">
+        <a href="/policy">Policy</a>
+        <a href="/audit">Audit log</a>
+        <a href="/audit/verify">Verify log</a>
+        <a id="receiptEvidence" href="/audit">Evidence JSON</a>
+      </nav>
+      <p class="receipt-note" id="receiptNote">Source and simulation labels are preserved exactly as reported.</p>
+    </div>
+  </details>
+
+  <footer class="footer" id="reportFooter"><div class="col"></div><div class="col"></div><div class="col"></div><div class="col"></div></footer>
+
 </div>
-<script type="module">
-import { api, hbar, qs } from "/assets/api.js";
-import { mountRail, mountTicker } from "/assets/rail.js";
-import { pixelIsland, el, hashSeed } from "/assets/scene.js";
-const $ = (x) => document.getElementById(x);
-const id = qs("proposal");
-const [r, health] = await Promise.all([id ? api.proposal(id) : Promise.resolve({ ok: false, data: { error: "Add ?proposal=<id> to the URL, or pick one on the atlas." } }), api.health()]);
-const h = health.data;
-if (!r.ok) {
-  mountRail($("top"), "", [{ label: "Report", value: "not found", dot: "ink" }]);
-  $("verdict").textContent = r.data.error;
-  $("scene").append(pixelIsland({ cx: 150, cy: 120, seed: 3 }));
-  document.body.dataset.state = "error";
-} else {
-  const { proposal: p, check, lastOutcome: o, large } = r.data;
-  const decision = o?.decision ?? "PENDING";
-  mountRail($("top"), "", [
-    { label: "Verdict", value: check.matches ? "Matches" : "Mismatch", dot: check.matches ? "green" : "red" },
-    { label: "Layer", value: `${h.mode} · ${large ? "large" : "routine"}` },
-    { label: "Proposal", value: p.id, end: true, dot: "red" },
-  ]);
-  const big = (t) => (t / 1e8).toLocaleString(undefined, { maximumFractionDigits: 8 });
-  $("num-described").textContent = big(p.description.amountTinybars);
-  $("num-actual").textContent = big(p.transfer.amountTinybars);
-  $("payee-described").textContent = `${p.description.payee} · ${p.description.token}`;
-  $("payee-actual").textContent = `${p.transfer.payee} · ${p.transfer.token}`;
-  if (!check.matches) $("num-actual").classList.add("red");
-  $("scene").append(pixelIsland({ cx: 150, cy: 118, seed: hashSeed(p.id) }));
-  const stamp = $("stamp"); stamp.dataset.decision = decision;
-  stamp.firstChild.textContent = decision === "SIGNED" ? "Signed" : decision === "REFUSED" ? "Refused" : "Pending";
-  $("verdict").textContent = check.matches
-    ? `${p.description.purpose}. The transfer matches its description.`
-    : `The description said one thing. The transfer does another. ${check.mismatches.map((m) => `${m.field}: ${m.described} vs ${m.actual}`).join(". ")}.`;
-  $("reason").textContent = o ? o.reason.slice(0, 280) : "Not yet submitted to the agent.";
-  $("open-console").href = `/console.html?proposal=${encodeURIComponent(p.id)}`;
-  mountTicker($("ticker"), [`${p.id}`, p.description.purpose, check.matches ? "matches" : "mismatch", `decision ${decision}`, large ? "large · World ID gate" : "routine", o ? `check paid via ${o.paidVia}` : "no check paid yet", `transfer source ${o?.transferSource ?? "request"}`]);
-  const col = (title, lines) => { const d = document.createElement("div"); const l = document.createElement("span"); l.className = "label"; l.textContent = title; const q = document.createElement("p"); q.textContent = lines.join("\n"); q.style.whiteSpace = "pre-line"; d.append(l, q); return d; };
-  $("cols").replaceChildren(
-    col("Decision", [decision, o?.worldGateReason ?? (large ? "World ID required" : "No gate")]),
-    col("Check", [o ? `Paid via ${o.paidVia}` : "Not paid", o?.paidTxId ?? "no payment id"]),
-    col("0G verdict", [o ? `Source ${o.zeroGSource}` : "none", o?.zeroGRequestId ?? "no request id"]),
-    col("Chain", [`Schedule ${o?.scheduledTxId ?? p.scheduleId ?? "none"}`, `Audit ${o?.auditTxId ?? "none"}`, `Transfer read from ${o?.transferSource ?? "request"}`]),
-  );
-  document.body.dataset.state = "ready";
-  document.body.dataset.decision = decision;
-}
+
+
+<script>
+(function(){
+  /* perf instrumentation: marks let the QA harness attribute main-thread time (no visual effect) */
+  performance.mark('editorial:script-start');
+
+  /* arrived from the atlas handoff: keep the red sheet continuous */
+  if (new URLSearchParams(location.search).get('from') === 'atlas') {
+    document.documentElement.classList.add('from-atlas');
+    var cm = document.querySelector('.curtain-mark');
+    if (cm) cm.textContent = 'COUNCIL';
+  }
+
+  var html = document.documentElement;
+  var playing = false;
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function setStatements(){
+    document.querySelectorAll('.statement').forEach(function(p, pi){
+      p.querySelectorAll('.l > span').forEach(function(sp, i){
+        sp.style.animationDelay = (0.56 + pi * 0.12 + i * 0.045).toFixed(3) + 's';
+      });
+    });
+  }
+
+  /* drop the curtain from the DOM once it has wiped away */
+  function bindCurtain(){
+    var curtain = document.querySelector('.curtain');
+    if (!curtain) return;
+    curtain.addEventListener('animationend', function(e){
+      if (e.animationName === 'wipe') {
+        curtain.remove();
+        performance.mark('editorial:curtain-removed'); /* QA: confirms the layer is actually released */
+      }
+    });
+  }
+
+
+  function playMotion(){
+    if (playing) return;
+    playing = true;
+    setStatements();
+    bindCurtain();
+    countUp();
+    buildIsland();
+  }
+
+
+  function count(el, target, delay){
+    var start = null, dur = 600;
+    el.textContent = '00';
+    function frame(ts){
+      if (start === null) start = ts;
+      var t = Math.min(1, (ts - start) / dur);
+      var e = 1 - Math.pow(2, -10 * t);
+      var v = Math.round(target * (t === 1 ? 1 : e));
+      el.textContent = String(v).padStart(2, '0');
+      if (t < 1) requestAnimationFrame(frame);
+      else el.textContent = String(target);
+    }
+    setTimeout(function(){ requestAnimationFrame(frame); }, delay);
+  }
+  function countUp(){
+    document.querySelectorAll('.numeral[data-count]').forEach(function(el, i){
+      count(el, parseInt(el.dataset.count, 10), 950 + i * 240);
+    });
+  }
+
+  /* PERF: the island is generated by code — a few hundred flat cells, painted once.
+     Only transform/opacity animate afterwards, so the paint cost is front-loaded. */
+  function buildIsland(){
+    var svg = document.getElementById('island');
+    var NS = 'http://www.w3.org/2000/svg';
+    function E(name, attrs, parent, cls, delay){
+      var n = document.createElementNS(NS, name);
+      for (var k in attrs) n.setAttribute(k, attrs[k]);
+      if (cls) n.setAttribute('class', cls);
+      if (delay != null) n.style.animationDelay = (delay * 0.42).toFixed(2) + 's';
+      (parent || svg).appendChild(n);
+      return n;
+    }
+
+    var HW = 7, HH = 3.5, SIDE = 15, CX = 160, CY = 168, A = 7.4, B = 4.8;
+    var P = {
+      grass:['#6fae5f','#5d9b50','#82bf70'],
+      dirt:'#7a5a3a', dirt2:'#6a4c30',
+      water:'#a6cbe8', water2:'#8cb8de', deep:'#79a9d2',
+      body:'#f2efe7', stripe:'#e23b28', dark:'#1c1c1a',
+      vine:'#4e8f45', stem:'#4e8f45', bell:'#ffffff',
+      smoke:'#8fbce6',
+      pine:'#3f7d3a', pineHi:'#4f8f45', trunk:'#6a4c30',
+      log:'#5f4630', fire:'#e2622f', fireHi:'#f0a03c',
+      cloud:'#ded8c8', firefly:'#f0a03c'
+    };
+    function inside(c, r, a, b){ var x = c/(a||A), y = r/(b||B); return x*x + y*y <= 1; }
+    function iso(c, r){ return [CX + (c - r) * HW, CY + (c + r) * HH]; }
+    function poly(pts, fill, parent, cls, delay){
+      return E('polygon', { points: pts.map(function(q){ return q.join(','); }).join(' '),
+                            fill: fill }, parent, cls, delay);
+    }
+    function rect(x, y, w, h, fill, parent, cls, delay){
+      return E('rect', { x:x, y:y, width:w, height:h, fill:fill }, parent, cls, delay);
+    }
+
+    /* water rings */
+    for (var c = -12; c <= 12; c++){
+      for (var r = -9; r <= 9; r++){
+        if (!inside(c, r, A + 2.9, B + 2.9)) continue;
+        if (inside(c, r, A + 0.55, B + 0.55)) continue;
+        var w = iso(c, r);
+        var deep = !inside(c, r, A + 1.7, B + 1.7);
+        var shimmering = ((c * 7 + r * 13) % 9) === 0;
+        poly([[w[0], w[1]-HH],[w[0]+HW,w[1]],[w[0],w[1]+HH],[w[0]-HW,w[1]]],
+             deep ? P.deep : (shimmering ? P.water2 : P.water),
+             svg, 'cell' + (shimmering ? ' shimmer' : ''),
+             1.02 + (Math.abs(c) + Math.abs(r)) * 0.028);
+      }
+    }
+
+    /* island top + dirt sides */
+    for (var c2 = -9; c2 <= 9; c2++){
+      for (var r2 = -7; r2 <= 7; r2++){
+        if (!inside(c2, r2)) continue;
+        var t = iso(c2, r2);
+        var h = ((c2 * 73 + r2 * 151) % 7 + 7) % 7;
+        var delay = 1.25 + Math.hypot(c2 / A, r2 / B) * 0.5 + (h % 3) * 0.02;
+        poly([[t[0], t[1]-HH],[t[0]+HW,t[1]],[t[0],t[1]+HH],[t[0]-HW,t[1]]],
+             P.grass[h % 3], svg, 'cell', delay);
+        if (!inside(c2 + 1, r2))
+          poly([[t[0]+HW,t[1]],[t[0],t[1]+HH],[t[0],t[1]+HH+SIDE],[t[0]+HW,t[1]+SIDE]],
+               P.dirt2, svg, 'cell', delay + 0.04);
+        if (!inside(c2, r2 + 1))
+          poly([[t[0]-HW,t[1]],[t[0],t[1]+HH],[t[0],t[1]+HH+SIDE],[t[0]-HW,t[1]+SIDE]],
+               P.dirt, svg, 'cell', delay + 0.04);
+      }
+    }
+
+    /* RV sprite at the back of the island */
+    var rv = iso(-2.5, -1.7);
+    var gOuter = E('g', { transform: 'translate(' + rv[0] + ',' + rv[1] + ')' }, svg, 'sprite part-rv', 2.0);
+    var g = E('g', {}, gOuter, 'rv');
+    rect(-20, -18, 40, 18, P.body, g);
+    rect(-20, -8, 40, 5, P.stripe, g);
+    rect(-16, -15, 7, 6, P.dark, g);
+    rect(-6, -15, 7, 6, P.dark, g);
+    rect(4, -15, 7, 6, P.dark, g);
+    rect(-17, 0, 7, 4, P.dark, g);
+    rect(9, 0, 7, 4, P.dark, g);
+    rect(16, -21, 4, 4, P.dark, g);
+    [[-19,-18,3,3],[6,-18,2,4],[14,-13,3,3],[-8,-3,2,3],[24,-18,3,2]].forEach(function(v){
+      rect(v[0], v[1], v[2], v[3], P.vine, g);
+    });
+
+    /* smoke puffs rising from the exhaust */
+    for (var s2 = 0; s2 < 7; s2++){
+      var sg = E('g', { class: 'smoke-puff' }, svg);
+      sg.style.animationDelay = (2.2 + s2 * 0.4) + 's';
+      var sx = rv[0] + 16, sy = rv[1] - 22;
+      var wob = (s2 % 2 === 0) ? -2 : 2;
+      rect(sx + wob, sy, 5, 5, P.smoke, sg);
+      rect(sx + wob + 3, sy - 4, 3, 3, P.smoke, sg);
+    }
+
+    /* lily of the valley — swaying bell clusters */
+    [[3.4,1.1,0],[5.3,-0.5,0.9],[-4.8,0.5,1.7],[1.9,3.3,2.5]].forEach(function(f){
+      var fp = iso(f[0], f[1]);
+      var fo = E('g', { transform: 'translate(' + fp[0] + ',' + fp[1] + ')' }, svg, 'sprite part-flowers', 2.0);
+      var fg = E('g', {}, fo, 'bell');
+      fg.style.animationDelay = f[2] + 's';
+      rect(-1, -15, 2, 15, P.stem, fg);
+      rect(1, -9, 5, 2, P.stem, fg);
+      rect(-6, -6, 5, 2, P.stem, fg);
+      rect(-4, -17, 4, 4, P.bell, fg);
+      rect(1, -13, 4, 4, P.bell, fg);
+      rect(-6, -10, 4, 4, P.bell, fg);
+      rect(2, -16, 4, 1, P.stem, fg);
+    });
+
+    /* two tiny figures crossing the front meadow */
+    [[0.6,3.5,0],[-1.9,3.9,6.5]].forEach(function(w){
+      var wp = iso(w[0], w[1]);
+      var wo = E('g', { transform: 'translate(' + wp[0] + ',' + wp[1] + ')' }, svg, 'sprite', 2.0);
+      var wg = E('g', {}, wo, 'walker');
+      wg.style.animationDelay = w[2] + 's';
+      rect(-3, -12, 7, 6, P.body, wg);
+      rect(-2, -16, 5, 4, P.body, wg);
+      rect(-1, -15, 3, 2, P.dark, wg);
+      rect(-3, -6, 2, 6, '#d9d3c4', wg, 'legA');
+      rect(1, -6, 2, 6, '#d9d3c4', wg, 'legB');
+      rect(0, -10, 1, 3, P.stripe, wg);
+    });
+
+    /* conifers on the meadow */
+    [[-6.2,0.6,0],[-4.7,-1.4,0.3],[6.5,-0.9,0.6],[5.1,1.7,0.9]].forEach(function(t){
+      var tp = iso(t[0], t[1]);
+      var to = E('g', { transform: 'translate(' + tp[0] + ',' + tp[1] + ')' }, svg, 'sprite part-trees', 2.05 + t[2]);
+      var tg = E('g', {}, to, 'tree');
+      tg.style.animationDelay = t[2] + 's';
+      rect(-1, -8, 2, 8, P.trunk, tg);
+      rect(-5, -13, 10, 5, P.pine, tg);
+      rect(-4, -17, 8, 4, P.pine, tg);
+      rect(-2, -21, 4, 4, P.pineHi, tg);
+    });
+
+    /* campfire beside the RV */
+    var cp = iso(-0.6, 0.4);
+    var cg = E('g', { transform: 'translate(' + cp[0] + ',' + cp[1] + ')' }, svg, 'sprite part-fire', 2.1);
+    rect(-7, -2, 14, 2, P.log, cg);
+    rect(-5, -4, 10, 2, P.log, cg);
+    var fl = E('g', { class: 'flame' }, cg);
+    fl.style.animationDelay = '2.3s';
+    rect(-3, -9, 6, 5, P.fire, fl);
+    rect(-2, -12, 4, 3, P.fireHi, fl);
+    rect(-1, -15, 2, 3, P.fireHi, fl);
+
+    /* butterflies drifting over the flowers */
+    [[2.6,0.4,'0.6s'],[4.7,1.5,'1.9s'],[-3.6,2.3,'3.1s']].forEach(function(b){
+      var bp = iso(b[0], b[1]);
+      var bo2 = E('g', { transform: 'translate(' + bp[0] + ',' + (bp[1] - 28) + ')' },
+                  svg, 'sprite', 2.15);
+      var bg = E('g', {}, bo2, 'floater');
+      bg.style.animationDelay = b[2];
+      rect(-4, 0, 3, 3, P.stripe, bg, 'wingL');
+      rect(1, 0, 3, 3, P.stripe, bg, 'wingR');
+      rect(-1, 0, 1, 3, P.dark, bg);
+    });
+
+    /* a small boat crossing the shallows */
+    var bo = E('g', { class: 'boat part-boat' }, svg);
+    bo.style.animationDelay = '2.4s';
+    rect(52, 236, 26, 4, P.dirt, bo);
+    rect(58, 230, 2, 6, P.trunk, bo);
+    rect(60, 231, 11, 6, P.body, bo);
+    rect(60, 231, 11, 2, P.stripe, bo);
+
+    /* clouds drifting above the island */
+    [[26,62,0],[128,48,8],[196,74,15]].forEach(function(cl){
+      var cd = E('g', { class: 'cloud' }, svg);
+      cd.style.animationDelay = cl[2] + 's';
+      rect(cl[0], cl[1], 34, 6, P.cloud, cd);
+      rect(cl[0] + 8, cl[1] - 5, 18, 5, P.cloud, cd);
+      rect(cl[0] + 4, cl[1] + 6, 26, 4, P.cloud, cd);
+    });
+
+    /* water ripples expanding on the shallows */
+    [[-8,2,0],[7.5,2.5,1.5],[0,-6.5,3]].forEach(function(rp){
+      var p0 = iso(rp[0], rp[1]);
+      var rg = E('polygon', {
+        points: [[p0[0], p0[1]-HH],[p0[0]+HW,p0[1]],[p0[0],p0[1]+HH],[p0[0]-HW,p0[1]]]
+                  .map(function(q){ return q.join(','); }).join(' '),
+        fill: 'none', stroke: '#cfe4f4', 'stroke-width': 1.2
+      }, svg, 'ripple');
+      rg.style.animationDelay = rp[2] + 's';
+    });
+
+    /* fireflies blinking among the flowers */
+    [[5.7,2.5,0],[-5.4,-0.2,1.1],[3.3,-1.3,2.2]].forEach(function(ff){
+      var fp = iso(ff[0], ff[1]);
+      var fg2 = E('g', { class: 'twinkle' }, svg);
+      fg2.style.animationDelay = ff[2] + 's';
+      rect(fp[0], fp[1] - 9, 3, 3, P.firefly, fg2);
+    });
+  }
+
+  var fine = window.matchMedia('(pointer: fine)').matches && !reduceMotion;
+  if (fine) {
+    var tx = 0, ty = 0, cx = 0, cy = 0, raf = null;
+    function tick(){
+      cx += (tx - cx) * 0.08;
+      cy += (ty - cy) * 0.08;
+      document.documentElement.style.setProperty('--mx', cx.toFixed(4));
+      document.documentElement.style.setProperty('--my', cy.toFixed(4));
+      if (Math.abs(tx - cx) > 0.001 || Math.abs(ty - cy) > 0.001) raf = requestAnimationFrame(tick);
+      else raf = null;
+    }
+    window.addEventListener('mousemove', function(e){
+      tx = (e.clientX / window.innerWidth) - 0.5;
+      ty = (e.clientY / window.innerHeight) - 0.5;
+      if (!raf) raf = requestAnimationFrame(tick);
+    }, { passive: true });
+  }
+
+  playMotion();
+
+  /* ---- site-wide motion (ported from the archipelago) ---- */
+  var scrollFill = document.getElementById('scrollFill');
+  function scrollMax(){
+    var h = document.documentElement;
+    return h.scrollHeight - h.clientHeight;
+  }
+  function onScroll(){
+    if (!scrollFill) return;
+    var max = scrollMax();
+    if (max <= 0) return;
+    var h = document.documentElement;
+    var p = (h.scrollTop || document.body.scrollTop) / max * 100;
+    scrollFill.style.width = p.toFixed(1) + '%';
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  if (scrollMax() > 0){
+    onScroll();
+  } else if (reduceMotion) {
+    if (scrollFill) scrollFill.style.width = '100%';
+  } else {
+    /* single-viewport report: sweep the bar once as the entrance settles */
+    var s0 = null;
+    function sweep(ts){
+      if (s0 === null) s0 = ts;
+      var k = Math.min(1, (ts - s0) / 1600);
+      if (scrollFill) scrollFill.style.width = (k * 100).toFixed(1) + '%';
+      if (k < 1) requestAnimationFrame(sweep);
+    }
+    requestAnimationFrame(sweep);
+  }
+
+  var statusText = document.getElementById('statusText');
+  var STATUSES = window.LIVE_STATUSES = ['LOADING PROPOSAL RECORD'];
+  if (statusText) statusText.textContent = STATUSES[0];
+
+  var tickA = document.getElementById('tickA'), tickB = document.getElementById('tickB');
+  var TICK = 'COUNCIL AGENT \u00b7 LOADING \u00b7 ';
+  var TICKLINE = TICK + TICK + TICK;
+  if (tickA){ tickA.textContent = TICKLINE; tickB.textContent = TICKLINE; }
+
+  var islandSvg = document.getElementById('island');
+  document.querySelectorAll('.legend .row').forEach(function(row){
+    var part = row.getAttribute('data-part');
+    if (!part || !islandSvg) return;
+    function spotlight(on){
+      islandSvg.querySelectorAll('.part-' + part).forEach(function(g){ g.classList.toggle('spot', on); });
+    }
+    row.addEventListener('mouseenter', function(){ spotlight(true); });
+    row.addEventListener('mouseleave', function(){ spotlight(false); });
+    row.addEventListener('focus', function(){ spotlight(true); });
+    row.addEventListener('blur', function(){ spotlight(false); });
+  });
+
+  performance.mark('editorial:script-end');
+  try { performance.measure('editorial:script', 'editorial:script-start', 'editorial:script-end'); } catch (e) {}
+})();
 </script>
-</body></html>
+<script type="module" src="/assets/live-original.js"></script>
+<script type="module">
+import { reduced } from "/assets/motion.js";
+
+const byId = (id) => document.getElementById(id);
+const measure = document.createElement("canvas").getContext("2d");
+const TINYBARS_PER_HBAR = 100_000_000n;
+let latestSnapshot = null;
+let latestKey = null;
+let sceneKey = null;
+let sceneModule = null;
+let journey = null;
+let legacyCommitment = null;
+
+/* Integer arithmetic keeps the last tinybar exact, including at the safe-integer limit. */
+function formatAmount(value, fixed = false) {
+  if (!Number.isSafeInteger(value) || value < 0) return "Unavailable";
+  const amount = BigInt(value);
+  const whole = (amount / TINYBARS_PER_HBAR).toLocaleString("en-US");
+  const fraction = String(amount % TINYBARS_PER_HBAR).padStart(8, "0");
+  const decimals = fixed ? fraction : fraction.replace(/0+$/, "");
+  return decimals ? `${whole}.${decimals}` : whole;
+}
+
+function recordFrom(snapshot) {
+  const record = snapshot?.record;
+  const proposal = record?.proposal;
+  return proposal && typeof proposal.id === "string" && proposal.id &&
+    proposal.description && proposal.transfer ? record : null;
+}
+
+function describeDecision(record) {
+  if (!record) return { label: "Unavailable", text: "No proposal record is available.", tone: "pending" };
+  if (!record.lastOutcome?.decision) return { label: "Not decided", text: "No decision has been recorded.", tone: "pending" };
+  switch (record.lastOutcome.decision) {
+    case "SIGNED": return { label: "Signed", text: "The agent signed.", tone: "signed" };
+    case "REFUSED": return { label: "Refused", text: "The agent refused.", tone: "refused" };
+    case "CANCELLED": return { label: "Cancelled", text: "The proposal was cancelled.", tone: "cancelled" };
+    case "PENDING_CHALLENGE": return { label: "Pending", text: "Waiting in the challenge window.", tone: "pending" };
+    case "PENDING_VOTE": return { label: "Waiting for the council", text: "Outside the standing instruction: the council is voting.", tone: "vote" };
+    default: return { label: "Unknown", text: "The recorded decision is not recognized.", tone: "pending" };
+  }
+}
+
+function describeDifference(record) {
+  if (record?.check?.matches === true) return "Exact match · amount, payee and token agree";
+  if (record?.check?.matches !== false) return "Comparison unavailable";
+  const names = { amountTinybars: "amount", payee: "payee", token: "token" };
+  const mismatches = Array.isArray(record.check.mismatches) ? record.check.mismatches : [];
+  const fields = [...new Set(mismatches.map((item) => item?.field).filter((field) => typeof field === "string"))];
+  return fields.length ? `Mismatch · ${fields.map((field) => names[field] || field).join(" + ")}` : "Mismatch · fields not reported";
+}
+
+/* Live renderers retain count/scramble/flow callbacks. Detach their targets on every
+   record event, even duplicate events, without starting another numeric animation. */
+function cloneLiveNode(node) {
+  const clone = node.cloneNode(true);
+  node.replaceWith(clone);
+  return clone;
+}
+
+function fitAmounts() {
+  document.querySelectorAll(".numeral").forEach((el) => {
+    el.style.fontSize = "";
+    const style = getComputedStyle(el);
+    const base = parseFloat(style.fontSize);
+    const room = el.parentElement.clientWidth;
+    if (!room || !measure) return;
+    measure.font = `${style.fontWeight} ${base}px ${style.fontFamily}`;
+    const value = el.dataset.final || el.textContent;
+    const tracking = parseFloat(style.letterSpacing) || 0;
+    const width = measure.measureText(value).width + tracking * value.length;
+    if (width > room) el.style.fontSize = `${Math.max(16, base * room / width * 0.96)}px`;
+  });
+}
+
+function renderStatement(record, decision, animate) {
+  const comparison = record?.check?.matches === true ? "The transfer matches." :
+    record?.check?.matches === false ? "The transfer differs." : "Comparison unavailable.";
+  const rows = record ? [comparison, decision.text] : ["No proposal record is available.", "Open the console to continue."];
+  document.querySelector(".statement").replaceChildren(...rows.map((text, index) => {
+    const line = document.createElement("span");
+    const content = document.createElement("span");
+    line.className = "l";
+    content.textContent = text;
+    if (animate) content.style.animationDelay = `${0.12 + index * 0.08}s`;
+    else { content.style.animation = "none"; content.style.transform = "none"; }
+    line.append(content);
+    return line;
+  }));
+}
+
+function renderHero(record, mode, animate) {
+  const decision = describeDecision(record);
+  const proposal = record?.proposal;
+  document.querySelector(".hero").dataset.state = record?.check?.matches === false ? "mismatch" :
+    record?.check?.matches === true ? "match" : "pending";
+  [["numL", proposal?.description], ["numR", proposal?.transfer]].forEach(([id, transfer]) => {
+    const node = cloneLiveNode(byId(id));
+    node.classList.remove("m-shake");
+    const amount = formatAmount(transfer?.amountTinybars);
+    node.textContent = amount === "Unavailable" ? "—" : amount;
+    node.dataset.final = node.textContent;
+    node.setAttribute("aria-label", `${formatAmount(transfer?.amountTinybars, true)} HBAR`);
+  });
+  const stamp = cloneLiveNode(document.querySelector(".stamp"));
+  stamp.style.animation = animate ? "" : "none";
+  stamp.style.color = decision.tone === "signed" ? "var(--pass-ink)" :
+    ["refused", "cancelled"].includes(decision.tone) ? "var(--red-ink)" : decision.tone === "vote" ? "#9a6b15" : "var(--muted-ink)";
+  stamp.dataset.tone = decision.tone;
+  stamp.style.borderColor = stamp.style.color;
+  byId("stampText").textContent = decision.label;
+  byId("stampSub").textContent = record?.lastOutcome?.auditHash?.slice(0, 12) || proposal?.id || "No record";
+  byId("tVerdict").textContent = decision.label;
+  byId("tProp").textContent = proposal?.id || "—";
+  byId("tLayer").textContent = `${mode} · ${record?.lastOutcome?.transferSource || "source not recorded"}`;
+  byId("amountDifference").textContent = record ? describeDifference(record) : "No amounts or comparison to display";
+  byId("statusText").textContent = `${proposal?.id || "No proposal record"} · ${decision.label} · ${mode}`;
+  renderStatement(record, decision, animate);
+  fitAmounts();
+}
+
+function receiptGroup(title, rows) {
+  const group = document.createElement("section");
+  group.className = "receipt-group";
+  const heading = document.createElement("h3");
+  heading.className = "label";
+  heading.textContent = title;
+  group.append(heading);
+  rows.filter(([, value]) => value !== null && value !== undefined && value !== "").forEach(([label, value]) => {
+    const row = document.createElement("p");
+    const key = document.createElement("span");
+    key.textContent = `${label}: `;
+    row.append(key, document.createTextNode(String(value)));
+    group.append(row);
+  });
+  return group;
+}
+
+function preserveCommitment() {
+  const commitment = document.querySelectorAll("#reportFooter .col")[2];
+  const facts = commitment?.querySelector("p");
+  if (facts && facts.dataset.receiptSummary !== "true") legacyCommitment = facts.cloneNode(true);
+  if (!commitment) return;
+  const label = document.createElement("div");
+  label.className = "label";
+  label.textContent = "Commitment";
+  const summary = document.createElement("p");
+  summary.dataset.receiptSummary = "true";
+  summary.append("Policy, entry, schedule & 0G", document.createElement("br"));
+  const link = document.createElement("a");
+  link.href = "#verificationReceipts";
+  link.textContent = "Read verification receipts";
+  summary.append(link);
+  commitment.replaceChildren(label, summary);
+}
+
+function outcomeRows(record) {
+  const outcome = record.lastOutcome;
+  return [
+    ["Decision", outcome?.decision ?? "No decision recorded"], ["Reason", outcome?.reason],
+    ["World ID gate reason", outcome?.worldGateReason], ["Approval source", record.approval?.source],
+    ["Approval expires", record.approval?.expiresAt], ["Challenge until", record.challenge?.until ?? outcome?.challengeUntil],
+    ["Challenged", record.challenge?.challenged], ["Challenge reason", record.challenge?.reason],
+    ["Payment source", outcome?.paidVia], ["Payment transaction", outcome?.paidTxId],
+    ["Audit transaction", outcome?.auditTxId], ["Audit sequence", outcome?.auditSeq],
+    ["Audit hash", outcome?.auditHash], ["Audit error", outcome?.auditError],
+    ["Proposal schedule", record.proposal.scheduleId], ["Outcome schedule", outcome?.scheduledTxId],
+    ["Schedule action", outcome?.scheduleAction], ["0G request", outcome?.zeroGRequestId],
+    ["0G source", outcome?.zeroGSource], ["0G commentary", outcome?.zeroGVerdictText],
+    ["Transfer source", outcome?.transferSource], ["Decision mode", outcome?.mode],
+    ["Cancellation audit sequence", outcome?.cancelledBy?.auditSeq], ["Cancellation audit hash", outcome?.cancelledBy?.auditHash],
+    ["Standing instruction", outcome?.mandate ? `${outcome.mandate.id} · ${outcome.mandate.within ? "within" : "outside"}` : undefined],
+    ["Instruction violations", outcome?.mandate?.violations?.length ? outcome.mandate.violations.join("; ") : undefined],
+    ["Instruction rules hash", outcome?.mandate?.rulesHash],
+    ["Council vote", outcome?.vote ? `${outcome.vote.status} · ${outcome.vote.yes} yes, ${outcome.vote.no} no, ${outcome.vote.needed} of ${outcome.vote.eligible?.length ?? "?"} needed` : undefined],
+  ];
+}
+
+function buildReceipts(record, mode) {
+  preserveCommitment();
+  const facts = byId("receiptFacts");
+  facts.replaceChildren();
+  if (record) {
+    const { proposal, check } = record;
+    const mismatches = Array.isArray(check?.mismatches) ? check.mismatches : [];
+    facts.append(receiptGroup("Exact transfers", [
+      ["Described amount", `${formatAmount(proposal.description.amountTinybars, true)} HBAR`],
+      ["Actual amount", `${formatAmount(proposal.transfer.amountTinybars, true)} HBAR`],
+      ["Described payee", proposal.description.payee], ["Actual payee", proposal.transfer.payee],
+      ["Described token", proposal.description.token], ["Actual token", proposal.transfer.token],
+      ["Purpose", proposal.description.purpose],
+    ]), receiptGroup("Deterministic comparison", [
+      ["Check", check?.verdict || describeDifference(record)],
+      ...mismatches.filter((item) => item && typeof item.field === "string")
+        .map((item) => [item.field, `described ${item.described}; actual ${item.actual}`]),
+    ]), receiptGroup("Recorded outcome", outcomeRows(record)));
+  } else {
+    facts.append(document.createTextNode("No proposal record is available. Policy and audit links remain available."));
+  }
+  if (legacyCommitment) {
+    const group = receiptGroup("Published commitment", []);
+    group.append(legacyCommitment.cloneNode(true));
+    facts.append(group);
+  }
+  const evidence = byId("receiptEvidence");
+  evidence.hidden = !record;
+  evidence.textContent = record?.lastOutcome ? "Evidence JSON" : "Proposal JSON";
+  if (record) evidence.href = `/proposals/${encodeURIComponent(record.proposal.id)}${record.lastOutcome ? "/evidence" : ""}`;
+  byId("receiptSummary").textContent = `${mode} · ${describeDecision(record).label}`;
+  byId("receiptNote").textContent = "Amounts retain all eight HBAR decimal places. Source labels are recorded as supplied. Journey replay is illustrative, not per-stage telemetry.";
+}
+
+function renderFooter(record, mode) {
+  const columns = document.querySelectorAll("#reportFooter .col");
+  const sources = receiptGroup("Sources", [["Mode", mode], ["Payment", record?.lastOutcome?.paidVia ?? "not recorded"],
+    ["0G", record?.lastOutcome?.zeroGSource ?? "not recorded"]]);
+  columns[1]?.replaceChildren(...sources.childNodes);
+  const actions = receiptGroup("Continue", []);
+  const row = document.createElement("p");
+  const consoleLink = document.createElement("a");
+  consoleLink.href = `/console.html${record ? `?proposal=${encodeURIComponent(record.proposal.id)}` : ""}`;
+  consoleLink.textContent = "Open console";
+  row.append(consoleLink);
+  if (record?.lastOutcome?.decision === "PENDING_VOTE") {
+    const voteLink = document.createElement("a");
+    voteLink.href = "/council.html";
+    voteLink.textContent = "Waiting for the council: vote";
+    row.append(document.createElement("br"), voteLink);
+  }
+  actions.append(row);
+  columns[3]?.replaceChildren(...actions.childNodes);
+}
+
+function sceneUnavailable() {
+  journey?.destroy();
+  journey = null;
+  sceneModule = null;
+  byId("reportJourney").replaceChildren(receiptGroup("Journey unavailable", [["Read", "The recorded outcome remains in verification receipts."]]));
+  byId("transferComparison").replaceChildren(receiptGroup("Visual comparison unavailable", [["Read", "Exact amounts and payees remain in verification receipts."]]));
+}
+
+function renderScenes() {
+  if (!sceneModule || !latestSnapshot || sceneKey === latestKey) return;
+  const { record } = latestSnapshot;
+  try {
+    if (record) {
+      if (!journey) journey = sceneModule.mountJourney(byId("reportJourney"));
+      sceneModule.renderTransfer(byId("transferComparison"), record.proposal);
+      journey.update(record, { animate: !reduced() });
+    } else {
+      journey?.update(null, { animate: false });
+    }
+    sceneKey = latestKey;
+  } catch {
+    sceneUnavailable();
+  }
+}
+
+function renderSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== "object" || !("record" in snapshot)) return;
+  const record = recordFrom(snapshot);
+  const mode = typeof snapshot.mode === "string" && snapshot.mode ? snapshot.mode : "mode unavailable";
+  const key = JSON.stringify([record, mode]);
+  const animate = key !== latestKey && !reduced();
+  latestKey = key;
+  latestSnapshot = { record, mode };
+  cloneLiveNode(byId("flow")).hidden = true;
+  renderHero(record, mode, animate);
+  buildReceipts(record, mode);
+  renderFooter(record, mode);
+  byId("reportEmpty").hidden = Boolean(record);
+  byId("reportEmptyText").textContent = new URLSearchParams(location.search).has("proposal") ?
+    "The requested proposal record is unavailable." : "No proposal record is available yet.";
+  byId("reportComparison").hidden = !record;
+  byId("reportJourneySection").hidden = !record;
+  renderScenes();
+}
+
+/* This event is emitted after the live renderer finishes. No DOM observer, no
+   polling, and no stage timers: only a new snapshot may auto-play the shared scene. */
+window.addEventListener("council:record", (event) => renderSnapshot(event.detail));
+if (window.COUNCIL_RECORD) renderSnapshot(window.COUNCIL_RECORD);
+import("/assets/council-scene.js").then((module) => {
+  sceneModule = module;
+  renderScenes();
+}).catch(sceneUnavailable);
+window.addEventListener("resize", fitAmounts, { passive: true });
+if (document.fonts?.ready) document.fonts.ready.then(fitAmounts);
+byId("reportFooter").addEventListener("click", (event) => {
+  if (event.target.closest('a[href="#verificationReceipts"]')) {
+    byId("verificationReceipts").open = true;
+    byId("verificationReceipts").querySelector("summary").focus();
+  }
+});
+window.addEventListener("pagehide", (event) => { if (!event.persisted) journey?.destroy(); });
+</script>
+</body>
+</html>

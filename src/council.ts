@@ -14,12 +14,32 @@ import { scheduleProblem, type ChainPort } from "./chain.js";
 import type { Proposal } from "./proposal.js";
 import { isLargeProposal, proposalFingerprint } from "./proposal.js";
 import { recheckAtExecution } from "./challenge.js";
+import { evaluateMandate, openTally, type MandateRules, type VoteTally } from "./mandate.js";
 import { worldGate, type WorldCheck } from "./world.js";
 import { zeroGVerdict, type ZeroGConfig, type ZeroGVerdict } from "./zeroG.js";
 
 // PENDING_CHALLENGE: every check passed, signing waits for the challenge window
 // and a re-check at execution. CANCELLED: a seat revocation cancelled it.
-export type CouncilDecision = "SIGNED" | "REFUSED" | "PENDING_CHALLENGE" | "CANCELLED";
+// PENDING_VOTE: outside the active standing instruction; the council decides.
+export type CouncilDecision = "SIGNED" | "REFUSED" | "PENDING_CHALLENGE" | "CANCELLED" | "PENDING_VOTE";
+
+// How a proposal stood against the active standing instruction.
+export interface OutcomeMandate {
+  id: string;
+  rulesHash: string;
+  within: boolean;
+  violations: string[];
+}
+
+// The active standing instruction, as the caller sees it at decision time.
+export interface MandateContext {
+  id: string;
+  rulesHash: string;
+  rules: MandateRules;
+  spentThisMonthTinybars: number;
+  // Current seat ids: the electorate if a vote opens.
+  seats: string[];
+}
 
 export interface CouncilOutcome {
   proposalId: string;
@@ -47,6 +67,10 @@ export interface CouncilOutcome {
   challengeUntil: string | null;
   // CANCELLED: the audit entry of the revocation that cancelled it.
   cancelledBy?: { auditSeq: number | null; auditHash: string | null; epoch: number };
+  // Set when a standing instruction was active for this decision.
+  mandate?: OutcomeMandate | null;
+  // Set when the proposal went to (or came back from) a council vote.
+  vote?: VoteTally | null;
   // Where the transfer that was checked came from.
   transferSource: "request" | "hedera-mirror-node";
   // The proposal as checked: with the on-chain transfer and schedule id filled in.
@@ -128,6 +152,8 @@ function emptyOutcome(proposal: Proposal, mode: "real" | "simulated", paidVia: "
     worldGateReason: null,
     usedWorldApproval: false,
     challengeUntil: null,
+    mandate: null,
+    vote: null,
     transferSource,
     proposal,
     mode,
@@ -138,6 +164,7 @@ export async function processProposal(
   agent: CouncilAgent,
   submitted: Proposal,
   worldCheck: WorldCheck | null,
+  mandate: MandateContext | null = null,
 ): Promise<CouncilOutcome> {
   const mode = agent.hedera.mode;
   const network = agent.hedera.config.network;
@@ -199,6 +226,8 @@ export async function processProposal(
     worldGateReason: null,
     usedWorldApproval: false,
     challengeUntil: null,
+    mandate: null,
+    vote: null,
     transferSource,
     proposal,
     mode,
@@ -264,10 +293,49 @@ export async function processProposal(
     return { ...afterVerdict, reason: payeeLookup.detail, ...(await audit("REFUSED_UNREGISTERED_PAYEE", `Payee registry lookup: ${payeeLookup.status}. ${payeeLookup.detail}`)) };
   }
 
-  // 4. Large proposal: World ID gate before signing.
+  // 3d. Standing instruction, only when one is active. Inside it, the adopted
+  // instruction is the human approval; outside it, the council votes (or the
+  // instruction says refuse).
+  let outcomeMandate: OutcomeMandate | null = null;
+  let mandatePrefix = "";
+  if (mandate) {
+    const ev = evaluateMandate(mandate.rules, proposal, { spentThisMonthTinybars: mandate.spentThisMonthTinybars, payeeStatus });
+    outcomeMandate = { id: mandate.id, rulesHash: mandate.rulesHash, within: ev.within, violations: ev.violations };
+    const why = ev.violations.join("; ");
+    const withMandate = { ...afterVerdict, mandate: outcomeMandate };
+    if (!ev.within && mandate.rules.outsideMandate === "refuse") {
+      const reason = `Outside standing instruction ${mandate.id}: ${why}. The instruction says to refuse anything else.`;
+      return { ...withMandate, reason, ...(await audit("REFUSED_OUTSIDE_MANDATE", reason)) };
+    }
+    if (!ev.within && mandate.seats.length === 0) {
+      const reason = `Outside standing instruction ${mandate.id}: ${why}. No council seats are left to vote on it, so the agent does not sign.`;
+      return { ...withMandate, reason, ...(await audit("REFUSED_OUTSIDE_MANDATE", reason)) };
+    }
+    if (!ev.within) {
+      const vote = openTally(mandate.seats);
+      const logged = await audit(
+        "VOTE_OPENED",
+        `${proposal.id} is outside standing instruction ${mandate.id} (${why}). Council vote opened: ${vote.needed} of ${vote.eligible.length} needed.`,
+      );
+      return {
+        ...withMandate,
+        decision: "PENDING_VOTE",
+        reason: `Outside standing instruction ${mandate.id}: ${why}. Waiting for the council: ${vote.needed} of ${vote.eligible.length} seats must vote yes.`,
+        scheduledTxId: proposal.scheduleId ?? null,
+        vote,
+        ...logged,
+      };
+    }
+    mandatePrefix = `Within standing instruction ${mandate.id}. `;
+  }
+
+  // 4. Large proposal: World ID gate before signing, unless an adopted
+  // standing instruction covers it.
   const large = isLargeProposal(proposal, agent.largeThresholdTinybars);
   let worldGateReason: string | null = null;
-  if (large) {
+  if (large && outcomeMandate) {
+    worldGateReason = `Large proposal inside standing instruction ${outcomeMandate.id}: the council-adopted instruction is the human approval, no per-payment World ID check.`;
+  } else if (large) {
     const gate = worldGate(worldCheck, proposal.id, agent.now?.());
     worldGateReason = gate.reason;
     if (!gate.allowed) {
@@ -288,8 +356,9 @@ export async function processProposal(
     const logged = await audit("PROPOSAL_CREATED", `PROPOSAL ${proposal.id} CREATED, challenge until ${challengeUntil}`);
     return {
       ...afterVerdict,
+      mandate: outcomeMandate,
       decision: "PENDING_CHALLENGE",
-      reason: `Passed every check. Not signed yet: challenge window open until ${challengeUntil}, then POST /proposals/${proposal.id}/execute re-checks and signs.`,
+      reason: `${mandatePrefix}Passed every check. Not signed yet: challenge window open until ${challengeUntil}, then POST /proposals/${proposal.id}/execute re-checks and signs.`,
       scheduledTxId: proposal.scheduleId ?? null,
       worldGateReason,
       challengeUntil,
@@ -307,16 +376,17 @@ export async function processProposal(
   }
   const logged = await audit(
     "SIGNED",
-    `Agent ${schedule.action} schedule ${schedule.scheduleId}. Check paid ${paidTxId}. 0G request ${verdict.requestId ?? "none"}. Payee registry: ${payeeStatus}.${verdictNote}`,
+    `${mandatePrefix}Agent ${schedule.action} schedule ${schedule.scheduleId}. Check paid ${paidTxId}. 0G request ${verdict.requestId ?? "none"}. Payee registry: ${payeeStatus}.${verdictNote}`,
   );
   return {
     ...afterVerdict,
+    mandate: outcomeMandate,
     decision: "SIGNED",
-    reason: `Agent signed proposal ${proposal.id}. ${verdict.text}`,
+    reason: `${mandatePrefix}Agent signed proposal ${proposal.id}. ${verdict.text}`,
     scheduledTxId: schedule.scheduleId,
     scheduleAction: schedule.action,
     worldGateReason,
-    usedWorldApproval: large,
+    usedWorldApproval: large && !outcomeMandate,
     ...logged,
   };
 }
@@ -339,10 +409,13 @@ export type ExecuteResult =
 export async function executePending(
   agent: CouncilAgent,
   pending: PendingExecution,
-  ctx: { currentEpoch: number; approval: WorldCheck | null },
+  ctx: { currentEpoch: number; approval: WorldCheck | null; mandate?: MandateContext | null },
 ): Promise<ExecuteResult> {
   const now = agent.now?.() ?? new Date();
   const prev = pending.outcome;
+  // A council vote or the adopted standing instruction stands in for the per-payment World ID check.
+  const votedThrough = prev.vote?.status === "passed";
+  const approvedBy = votedThrough ? "the council vote" : prev.mandate?.within ? `standing instruction ${prev.mandate.id}` : null;
   let proposal = prev.proposal;
   let chainProblem: string | null = null;
   // Real mode: read the schedule back from Hedera again; it may have been deleted or changed.
@@ -366,6 +439,7 @@ export async function executePending(
     createdEpoch: pending.createdEpoch,
     currentEpoch: ctx.currentEpoch,
     now,
+    approvedBy,
   });
   if (re.status === "too-early") return { kind: "too-early", secondsRemaining: re.secondsRemaining, reason: re.reason };
   if (re.status === "challenged") return { kind: "challenged", reason: re.reason };
@@ -399,6 +473,14 @@ export async function executePending(
   });
   if (chainProblem) return aborted(`schedule ${proposal.scheduleId} cannot be signed: ${chainProblem}`);
   if (re.status === "aborted") return aborted(re.reason);
+  // Inside-the-instruction proposals: the instruction must still be in force, and
+  // the payment still inside it (other payments may have used up the month).
+  if (prev.mandate?.within && !votedThrough) {
+    const cur = ctx.mandate ?? null;
+    if (!cur || cur.id !== prev.mandate.id) return aborted(`standing instruction ${prev.mandate.id} is no longer in force`);
+    const ev = evaluateMandate(cur.rules, proposal, { spentThisMonthTinybars: cur.spentThisMonthTinybars, payeeStatus: re.payeeStatus });
+    if (!ev.within) return aborted(`now outside standing instruction ${cur.id} (${ev.violations.join("; ")})`);
+  }
 
   let schedule;
   try {
@@ -421,9 +503,110 @@ export async function executePending(
       scheduledTxId: schedule.scheduleId,
       scheduleAction: schedule.action,
       worldGateReason: re.worldReason ?? prev.worldGateReason,
-      usedWorldApproval: re.large,
+      usedWorldApproval: re.large && !approvedBy,
       challengeUntil: null,
       ...logged,
     },
+  };
+}
+
+// Resolve a closed council vote on a PENDING_VOTE proposal. The x402 check is
+// not paid again: like executePending, the deterministic checks are re-run
+// (and the schedule re-read in real mode), then the challenge window or sign.
+export async function resolveVote(
+  agent: CouncilAgent,
+  prev: CouncilOutcome,
+  vote: VoteTally,
+  ctx: { createdEpoch: number; currentEpoch: number },
+): Promise<CouncilOutcome> {
+  const now = agent.now?.() ?? new Date();
+  const tally = `${vote.yes} yes, ${vote.no} no of ${vote.eligible.length} seats, ${vote.needed} needed`;
+  let proposal = prev.proposal;
+  const proposalHash = sha256(proposalFingerprint(proposal));
+  let payeeStatus = "not-enforced";
+  const write = async (event: string, detail: string) => {
+    const meta: EntryMeta = {
+      proposalHash,
+      payeeRegistry: payeeStatus,
+      zeroGRequestId: prev.zeroGRequestId?.slice(0, 80) ?? null,
+      zeroGModel: prev.zeroGSource === "0g" ? agent.zeroG.model.slice(0, 48) : null,
+      verdictHash: sha256(prev.zeroGVerdictText + proposalHash),
+    };
+    try {
+      const r = await agent.hedera.auditEntry({ proposalId: proposal.id, event, detail, at: now.toISOString(), meta });
+      return { auditTxId: r.txId, auditSeq: r.entry.seq, auditHash: r.entry.hash, auditError: null };
+    } catch (err) {
+      return { auditTxId: null, auditSeq: null, auditHash: null, auditError: `HCS audit failed: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  };
+  const closed = { ...prev, vote, challengeUntil: null };
+  if (vote.status === "failed") {
+    const reason = `Council vote failed (${tally}). The agent does not sign.`;
+    return { ...closed, decision: "REFUSED", reason, ...(await write("VOTE_FAILED", `Council vote on ${proposal.id} failed (${tally}).`)) };
+  }
+  if (vote.status !== "passed") return prev;
+
+  let problem: string | null = null;
+  if (agent.chain && proposal.scheduleId) {
+    try {
+      const onChain = await agent.chain.resolve(proposal);
+      const p = scheduleProblem(onChain, agent.hedera.config.treasuryAccountId);
+      if (p) problem = `schedule ${proposal.scheduleId} cannot be signed: ${p}`;
+      if (onChain.transfer) proposal = { ...proposal, transfer: { payee: onChain.transfer.payee, amountTinybars: onChain.transfer.amountTinybars, token: "HBAR" } };
+    } catch (err) {
+      problem = `could not read the schedule from Hedera (${err instanceof Error ? err.message : String(err)})`;
+    }
+  }
+  if (!problem && ctx.createdEpoch !== ctx.currentEpoch) problem = "seat revoked / epoch changed";
+  if (!problem) {
+    const check = checkProposal(proposal);
+    if (!check.matches) problem = `proposal no longer matches its description (${check.mismatches.map((m) => m.field).join(", ")})`;
+  }
+  if (!problem) {
+    const payee = agent.payees?.lookup(proposal.transfer.payee, now) ?? null;
+    payeeStatus = payee?.status ?? "not-enforced";
+    if (payee && payee.status !== "not-enforced" && payee.status !== "registered") {
+      problem = payee.status === "unregistered" ? "payee not registered" : `payee ${payee.status}`;
+    }
+  }
+  const after = { ...closed, proposal, worldGateReason: `Council vote passed (${tally}): a majority of World-ID-verified seats approved this payment.`, usedWorldApproval: false };
+  if (problem) {
+    const reason = `Council vote passed (${tally}), but re-checked after the vote: ${problem}, ABORTED`;
+    return { ...after, decision: "REFUSED", reason, ...(await write("ABORTED_AFTER_VOTE", reason)) };
+  }
+
+  const windowSeconds = agent.challengeWindowSeconds ?? 0;
+  if (windowSeconds > 0) {
+    const challengeUntil = new Date(now.getTime() + windowSeconds * 1000).toISOString();
+    const logged = await write("VOTE_PASSED", `Council vote on ${proposal.id} passed (${tally}). Re-checked, no second check fee. Challenge until ${challengeUntil}.`);
+    return {
+      ...after,
+      decision: "PENDING_CHALLENGE",
+      reason: `Council vote passed (${tally}). Not signed yet: challenge window open until ${challengeUntil}, then POST /proposals/${proposal.id}/execute re-checks and signs.`,
+      scheduledTxId: proposal.scheduleId ?? null,
+      challengeUntil,
+      ...logged,
+    };
+  }
+  const passed = await write("VOTE_PASSED", `Council vote on ${proposal.id} passed (${tally}). Re-checked, no second check fee.`);
+  let schedule;
+  try {
+    schedule = agent.chain && proposal.scheduleId ? await agent.chain.sign(proposal.scheduleId) : agent.hedera.simulateSign();
+  } catch (err) {
+    const msg = `Scheduled Transaction failed: ${err instanceof Error ? err.message : String(err)}`;
+    return { ...after, decision: "REFUSED", reason: msg, ...(await write("SIGN_FAILED", msg)) };
+  }
+  const logged = await write(
+    "SIGNED",
+    `Agent ${schedule.action} schedule ${schedule.scheduleId} after the council vote (${tally}). Check paid ${prev.paidTxId} (once). Payee registry: ${payeeStatus}.`,
+  );
+  return {
+    ...after,
+    decision: "SIGNED",
+    reason: `Council vote passed (${tally}). Agent signed proposal ${proposal.id} after a re-check, without a second check fee. ${prev.zeroGVerdictText}`,
+    scheduledTxId: schedule.scheduleId,
+    scheduleAction: schedule.action,
+    ...logged,
+    auditError: logged.auditError ?? passed.auditError,
   };
 }

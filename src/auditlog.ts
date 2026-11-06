@@ -32,6 +32,9 @@ export interface EntryMeta {
   verdictHash?: string;
   proposalHash?: string;
   payeeRegistry?: string;
+  // Standing instruction anchors (MANDATE_ADOPTED).
+  rulesHash?: string;
+  textHash?: string;
 }
 
 export type EntryInput = Pick<ChainedEntry, "proposalId" | "event" | "detail" | "at" | "policy" | "meta">;

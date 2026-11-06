@@ -8,7 +8,7 @@ const read = (path: string) => readFileSync(join(process.cwd(), "public", path),
 test("console mounts the scroll companion on the journey's decision", () => {
   const html = read("console.html");
   assert.match(html, /import \{ mountCompanion \} from "\/assets\/scroll-companion\.js"/);
-  assert.match(html, /mountCompanion\(\{ decisionHost: document\.body \}\)/);
+  assert.match(html, /mountCompanion\(\{ decisionHost: \$\("journey"\) \}\)/);
 });
 
 test("scroll companion is presentation-only and honours reduced motion", () => {

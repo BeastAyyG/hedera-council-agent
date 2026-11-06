@@ -41,6 +41,13 @@ export const api = {
   verifyWorld: (body) => call("POST", "/world/verify", body),
   join: (body) => call("POST", "/council/join", body),
   qrUrl: (data) => `/world/qr.svg?data=${encodeURIComponent(data)}`,
+  // Standing instructions and council votes (docs/mandate-spec.md).
+  mandate: () => call("GET", "/mandate"),
+  draftMandate: (text) => call("POST", "/mandate/draft", { text }),
+  votes: () => call("GET", "/council/votes"),
+  member: (seat) => call("GET", `/council/members/${encodeURIComponent(seat)}`),
+  // kind "proposal" or "mandate"; ballot { choice, mocked, byNullifier } or { choice, idkitResult }.
+  vote: (kind, subject, ballot) => call("POST", `${kind === "mandate" ? "/mandate" : "/proposals"}/${encodeURIComponent(subject)}/vote`, ballot),
 };
 
 export const hbar = (tinybars) =>

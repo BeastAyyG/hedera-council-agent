@@ -6,26 +6,33 @@ export function decisionModel(record) {
   const matches = record?.check?.matches === true;
   const signed = decision === "SIGNED";
   const pending = decision === "PENDING_CHALLENGE";
+  // Outside the standing instruction: not refused, waiting for the council's vote.
+  const voting = decision === "PENDING_VOTE";
+  const mandate = record?.lastOutcome?.mandate ?? null;
   const refused = decision === "REFUSED";
   const cancelled = decision === "CANCELLED";
   const blocked = refused && matches && record.large && Boolean(record.lastOutcome.worldGateReason);
   const approved = matches && record?.large && (signed || pending || Boolean(record.approval));
   const gate = !record ? ["wait", "No proposal"] : !matches ? ["skip", "Not reached"]
+    : voting ? ["wait", "Council vote open"]
+    : mandate?.within && (signed || pending) ? ["pass", "Standing instruction"]
+    : mandate && signed ? ["pass", "Council approved"]
     : !record.large ? ["skip", "Not required"] : blocked ? ["fail", "Blocked"]
     : approved ? ["pass", "Approved"] : ["wait", "Approval needed"];
   const states = [
     [record ? "pass" : "wait", record ? "Proposal received" : "No proposal"],
     [record ? (matches ? "pass" : "fail") : "wait", record ? (matches ? "Fields agree" : "Fields differ") : "Not checked"],
     gate,
-    [signed ? "pass" : refused || cancelled ? "fail" : "wait", signed ? "Signed" : refused ? "Not signed" : cancelled ? "Cancelled" : pending ? "Challenge window" : "Not signed yet"],
+    [signed ? "pass" : refused || cancelled ? "fail" : "wait", signed ? "Signed" : refused ? "Not signed" : cancelled ? "Cancelled" : pending ? "Challenge window" : voting ? "Waiting for the council" : "Not signed yet"],
   ];
   return {
     decision, hasOutcome,
-    stop: signed || pending || cancelled ? 3 : refused ? (blocked ? 2 : 1) : record ? 1 : 0,
-    pose: signed ? "signed" : refused || cancelled ? "refused" : pending ? "wait" : "idle",
-    title: signed ? "Checked. Signed. Filed." : refused ? "Stopped. No signature." : cancelled ? "Cancelled. No execution." : pending ? "Checks passed. Still waiting." : record ? "Ready for the agent." : "A proposal starts the journey.",
+    stop: signed || pending || cancelled ? 3 : voting ? 2 : refused ? (blocked ? 2 : 1) : record ? 1 : 0,
+    pose: signed ? "signed" : refused || cancelled ? "refused" : pending || voting ? "wait" : "idle",
+    title: signed ? "Checked. Signed. Filed." : refused ? "Stopped. No signature." : cancelled ? "Cancelled. No execution." : pending ? "Checks passed. Still waiting." : voting ? "Outside the rules. The council votes." : record ? "Ready for the agent." : "A proposal starts the journey.",
     caption: hasOutcome ? "Recorded decision · illustrated replay" : record ? "Proposal preview · not submitted" : "Submit a proposal to see its decision",
-    stages: states.map(([state, note], index) => ({ label: LABELS[index], state, note })),
+    // With a standing instruction the gate is the council or the adopted rules, not World ID.
+    stages: states.map(([state, note], index) => ({ label: index === 2 && voting ? "Council" : index === 2 && mandate ? "Instruction" : LABELS[index], state, note })),
   };
 }
 

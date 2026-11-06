@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Council Agent · Council</title><link rel="icon" href="data:,">
+<link rel="stylesheet" href="/assets/console-original.css">
+<link rel="stylesheet" href="/assets/motion.css">
+<link rel="stylesheet" href="/assets/council-scene.css">
+<link rel="stylesheet" href="/assets/council-pages.css">
+</head><body data-page="council" class="cv-page" data-state="loading">
+<div class="app-shell">
+  <aside class="app-rail" aria-hidden="true">
+    <a href="/" class="app-rail-mark">COUNCIL</a>
+    <span class="app-rail-rule"></span>
+    <span class="app-rail-meta">Council Agent, Vol. 1</span>
+  </aside>
+  <div class="app-rail-r" aria-hidden="true"><span class="app-dot"></span><span class="app-rail-meta" id="railMode">&mdash;</span></div>
+
+  <header class="app-header">
+    <div class="app-header-inner">
+      <a href="/" class="app-wordmark"><span class="app-wordmark-mark" aria-hidden="true"></span><span class="app-wordmark-text">Council <em>Agent</em></span></a>
+      <span class="app-header-note">Working papers</span>
+      <nav class="app-nav" aria-label="Primary"><a href="/">Atlas</a><a href="/console.html">Console</a><a href="/mandate.html">Instructions</a><a href="/council.html" aria-current="page">Council</a><a href="/member.html">My seat</a><a href="/report.html">Report</a><a href="/policy">Policy</a><a href="/audit/verify">Audit</a></nav>
+      <div class="app-header-actions">
+        <a href="/audit" class="app-header-link"><span>Audit log</span></a>
+        <span class="app-chain"><span class="status-dot text-safe"></span><span id="chainTag">&mdash;</span></span>
+      </div>
+    </div>
+    <nav class="app-mobile-nav" aria-label="Primary mobile"><a href="/">Atlas</a><a href="/console.html">Console</a><a href="/mandate.html">Instructions</a><a href="/council.html" aria-current="page">Council</a><a href="/member.html">My seat</a><a href="/report.html">Report</a><a href="/policy">Policy</a><a href="/audit/verify">Audit</a></nav>
+  </header>
+  <main class="app-main">
+    <div class="doc-page">
+      <aside class="doc-margin">
+        <div class="doc-folio">Council</div>
+        <div class="doc-folio mt-1" id="mMode">&mdash;</div>
+        <div class="cv-margin-notes">
+          <div class="doc-folio">Seats<span class="cv-margin-big" id="mSeats">0</span></div>
+          <div class="doc-folio">Open votes<span class="cv-margin-big" id="mOpen">0</span></div>
+          <div class="doc-folio">Closed<span class="cv-margin-big" id="mClosed">0</span></div>
+        </div>
+        <div class="mt-6"><span class="doc-stamp" id="mStamp">Council</span></div>
+      </aside>
+
+      <div class="doc-body">
+        <header>
+          <span class="doc-folio">Council · Votes outside the standing instruction</span>
+          <h1 class="doc-title mt-2 text-body">The council decides what the rules do not cover.</h1>
+          <p class="doc-deck mt-4 cv-lede">Payments inside the adopted standing instruction are co-signed with no vote. Anything outside it waits here until a majority of World-ID-verified seats decides. Nobody votes on routine payments.</p>
+          <div id="identity"></div>
+          <div id="qr" class="cv-qr" hidden></div>
+          <p id="status" class="cv-status" role="status" aria-live="polite"></p>
+        </header>
+
+        <section class="doc-section" id="open" aria-labelledby="openTitle">
+          <div class="doc-section-head"><h2 class="doc-section-title" id="openTitle">Open votes</h2><span class="doc-folio" id="openFolio">loading</span></div>
+          <div class="cv-cards" id="openList" aria-live="polite" aria-busy="true"></div>
+        </section>
+
+        <section class="doc-section" id="members" aria-labelledby="membersTitle">
+          <div class="doc-section-head"><h2 class="doc-section-title" id="membersTitle">Members</h2><span class="doc-folio" id="membersFolio">one person, one seat, keyed by the World ID nullifier</span></div>
+          <div class="cv-members" id="memberList"></div>
+        </section>
+
+        <section class="doc-section" id="closed" aria-labelledby="closedTitle">
+          <div class="doc-section-head"><h2 class="doc-section-title" id="closedTitle">Closed votes</h2><span class="doc-folio" id="closedFolio"></span></div>
+          <div id="closedList"></div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <footer class="app-footer">
+    <div class="app-footer-inner">
+      <p id="footLeft">Council Agent, Mumbai 2026</p>
+      <div class="flex flex-wrap items-center gap-4"><p id="footRight">&mdash;</p></div>
+    </div>
+  </footer>
+</div>
+<script src="/vendor/idkit.js"></script>
+<script type="module">
+import { api, hbar } from "/assets/api.js";
+import { $, el, when, identities, loadWorld, isDemo, feedback, mountIdentityBar, voteCard, updateVoteCard, showStamp, castBallot, seatAvatar, sourceBadge, decisionLabel, pill, poll, fillChrome } from "/assets/council-votes.js";
+import { stagger, reduced } from "/assets/motion.js";
+
+const fb = feedback($("status"), $("qr"));
+const cards = new Map();      // subject -> card element in the open grid
+const lastStatus = new Map(); // subject -> last seen vote status
+const holds = new Map();      // subject -> time until a just-closed card stays in the open grid
+const drafts = new Map();     // mandate id -> draft, for the rules shown on mandate votes
+let identity = identities.current();
+let world = { configured: false, mockedAllowed: false };
+let first = true;
+let unavailable = false;
+
+const detail = (item) => {
+  const d = drafts.get(item.subject);
+  if (!d) return null;
+  const wrap = el("div");
+  const list = el("ul", undefined, "cv-rules");
+  d.summary.forEach((line) => list.append(el("li", line)));
+  wrap.append(list, el("p", undefined, "cv-muted"));
+  wrap.lastChild.append(`"${d.text.length > 140 ? `${d.text.slice(0, 140)}…` : d.text}" `, el("a", "Read it", undefined, { href: "/mandate.html#draft" }));
+  return wrap;
+};
+const ctx = () => ({ world, identity, onVote, detail });
+
+async function onVote(item, choice, card) {
+  const res = await castBallot({ item, choice, world, identity, fb });
+  if (res.ok && res.data.vote) {
+    const vote = res.data.vote;
+    const next = { ...item, vote, decision: res.data.outcome?.decision ?? item.decision };
+    if (vote.status !== "open") {
+      holds.set(item.subject, Date.now() + (reduced() ? 1200 : 3400));
+      showStamp(card, vote.status === "passed");
+      if (item.kind === "proposal" && res.data.outcome) fb.set(`${item.subject}: council vote ${vote.status} ${vote.yes}–${vote.no}. ${decisionLabel(res.data.outcome.decision).label}${res.data.outcome.decision === "SIGNED" ? " after a re-check, with no second check fee" : ""}.`, vote.status === "passed" ? "ok" : "bad");
+    }
+    lastStatus.set(item.subject, vote.status);
+    updateVoteCard(card, next, ctx());
+  }
+  await refresh();
+}
+
+function renderOpen(data) {
+  const now = Date.now();
+  for (const item of data.closed) {
+    if (lastStatus.get(item.subject) === "open" && !holds.has(item.subject)) holds.set(item.subject, now + (reduced() ? 1200 : 3400));
+  }
+  const showing = [...data.open, ...data.closed.filter((i) => (holds.get(i.subject) ?? 0) > now)];
+  const keep = new Set(showing.map((i) => i.subject));
+  const box = $("openList");
+  for (const [subject, card] of cards) if (!keep.has(subject)) { card.remove(); cards.delete(subject); }
+  const added = [];
+  showing.forEach((item, index) => {
+    let card = cards.get(item.subject);
+    if (!card) { card = voteCard(item, ctx()); cards.set(item.subject, card); added.push(card); }
+    else {
+      if (item.vote.status !== "open" && lastStatus.get(item.subject) === "open") showStamp(card, item.vote.status === "passed");
+      updateVoteCard(card, item, ctx());
+    }
+    if (box.children[index] !== card) box.insertBefore(card, box.children[index] ?? null);
+  });
+  box.querySelector(".cv-empty")?.remove();
+  if (!showing.length) {
+    const empty = el("p", undefined, "cv-empty");
+    empty.append(data.activeMandate
+      ? `Nothing to vote on. Payments inside standing instruction ${data.activeMandate} are signed without a vote; only payments outside it come here.`
+      : "Nothing to vote on. With no standing instruction adopted, the agent follows its default checks. ");
+    if (!data.activeMandate) empty.append(el("a", "Write the owner's instruction", undefined, { href: "/mandate.html" }), ".");
+    box.append(empty);
+  }
+  if (!first && added.length && !reduced()) stagger(added, 0, 0.06);
+  for (const item of [...data.open, ...data.closed]) lastStatus.set(item.subject, item.vote.status);
+  $("openFolio").textContent = data.open.length ? `${data.open.length} waiting · majority of the seats that existed when each vote opened` : "none open";
+  $("mOpen").textContent = String(data.open.length);
+  box.setAttribute("aria-busy", "false");
+}
+
+function renderClosed(closed) {
+  $("mClosed").textContent = String(closed.length);
+  $("closedFolio").textContent = closed.length ? `${closed.length} decided` : "";
+  if (!closed.length) { $("closedList").replaceChildren(el("p", "No vote has closed yet.", "cv-empty")); return; }
+  const table = el("table", undefined, "doc-ledger cv-ledger");
+  const head = el("thead"); const hr = el("tr");
+  [["Subject", ""], ["What", ""], ["Tally", "cv-num"], ["Result", ""]].forEach(([t, c]) => hr.append(el("th", t, c, { scope: "col" })));
+  head.append(hr);
+  const body = el("tbody");
+  for (const item of closed) {
+    const tr = el("tr", undefined, undefined, { "data-subject": item.subject });
+    const s = el("td"); s.append(el("a", item.subject, "cv-mono", { href: item.kind === "mandate" ? "/mandate.html#history" : `/console.html?proposal=${encodeURIComponent(item.subject)}` }));
+    const what = el("td", item.kind === "proposal" && item.amountTinybars !== undefined ? `${item.title} · ${hbar(item.amountTinybars)} to ${item.payee}` : item.title);
+    const tally = el("td", `${item.vote.yes}–${item.vote.no} of ${item.vote.eligible.length}`, "cv-num");
+    const result = el("td");
+    const passed = item.vote.status === "passed";
+    result.append(pill(passed ? "safe" : "danger", item.kind === "mandate" ? (passed ? "adopted" : "rejected") : (passed ? "passed" : "refused")));
+    if (item.kind === "proposal" && item.decision) { const d = decisionLabel(item.decision); result.append(" ", pill(d.tone, d.label.toLowerCase())); }
+    tr.append(s, what, tally, result);
+    body.append(tr);
+  }
+  table.append(head, body);
+  $("closedList").replaceChildren(table);
+}
+
+function renderMembers(seats) {
+  $("mSeats").textContent = String(seats.length);
+  $("membersFolio").textContent = `${seats.length} seat${seats.length === 1 ? "" : "s"} · one person, one seat, keyed by the World ID nullifier`;
+  const list = $("memberList");
+  const key = JSON.stringify([seats, identities.list().map((x) => x.seat)]);
+  if (list.dataset.key === key) return;
+  list.dataset.key = key;
+  if (!seats.length) { list.replaceChildren(el("p", "No seats yet. Join above: the first members adopt the owner's instruction.", "cv-empty")); return; }
+  list.replaceChildren(...seats.map((s) => {
+    const a = el("a", undefined, "cv-member", { href: `/member.html?seat=${encodeURIComponent(s.seat)}`, "data-mine": String(Boolean(identities.find(s.seat))), "aria-label": `${s.seat}, ${s.source === "world" ? "World ID" : "mocked"} seat${identities.find(s.seat) ? ", held by this browser" : ""}` });
+    a.append(seatAvatar(s.seat), el("b", s.seat), sourceBadge(s.source), el("small", `joined ${when(s.joinedAt)}`));
+    return a;
+  }));
+}
+
+let bar;
+async function refresh() {
+  const [v, s, m] = await Promise.all([api.votes(), api.seats(), api.mandate().catch(() => ({ ok: false }))]);
+  if (s.ok) {
+    if (bar.prune(s.data.seats.map((x) => x.seat))) identity = identities.current();
+    if (String(s.data.count) !== $("mSeats").textContent) fillChrome();
+    renderMembers(s.data.seats);
+  }
+  if (m.ok) for (const d of m.data.drafts ?? []) drafts.set(d.id, d);
+  if (!v.ok) {
+    if (!unavailable) fb.set(v.status === 404 ? "This server has no council votes route yet (GET /council/votes)." : v.data?.error || "Could not load council votes.", "bad");
+    unavailable = true;
+    $("openList").setAttribute("aria-busy", "false");
+    return;
+  }
+  unavailable = false;
+  renderOpen({ ...v.data, activeMandate: m.ok ? m.data.active?.id ?? null : null });
+  renderClosed(v.data.closed);
+  first = false;
+}
+
+world = await loadWorld();
+$("mMode").textContent = world.configured ? "World ID ballots" : isDemo(world) ? "DEMO identities" : "Voting off";
+$("mStamp").textContent = world.configured ? "World ID" : isDemo(world) ? "Demo" : "Read only";
+bar = mountIdentityBar($("identity"), {
+  world, fb,
+  onChange: async (next) => {
+    identity = next;
+    for (const card of cards.values()) card.dataset.stale = "1";
+    // Re-draw every card's buttons for the new identity.
+    cards.forEach((card) => card.remove()); cards.clear();
+    await refresh();
+  },
+});
+fillChrome();
+try { await refresh(); } catch { fb.set("Could not load the council. Reload to retry.", "bad"); }
+document.body.dataset.state = "ready";
+if (!reduced()) stagger(document.querySelectorAll(".doc-body > header, .doc-section"), 0.05, 0.08);
+poll(refresh, 3000);
+</script>
+</body></html>

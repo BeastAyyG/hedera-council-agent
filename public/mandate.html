@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Council Agent · Instructions</title><link rel="icon" href="data:,">
+<link rel="stylesheet" href="/assets/console-original.css">
+<link rel="stylesheet" href="/assets/motion.css">
+<link rel="stylesheet" href="/assets/council-scene.css">
+<link rel="stylesheet" href="/assets/council-pages.css">
+</head><body data-page="mandate" class="cv-page" data-state="loading">
+<div class="app-shell">
+  <aside class="app-rail" aria-hidden="true">
+    <a href="/" class="app-rail-mark">COUNCIL</a>
+    <span class="app-rail-rule"></span>
+    <span class="app-rail-meta">Council Agent, Vol. 1</span>
+  </aside>
+  <div class="app-rail-r" aria-hidden="true"><span class="app-dot"></span><span class="app-rail-meta" id="railMode">&mdash;</span></div>
+
+  <header class="app-header">
+    <div class="app-header-inner">
+      <a href="/" class="app-wordmark"><span class="app-wordmark-mark" aria-hidden="true"></span><span class="app-wordmark-text">Council <em>Agent</em></span></a>
+      <span class="app-header-note">Working papers</span>
+      <nav class="app-nav" aria-label="Primary"><a href="/">Atlas</a><a href="/console.html">Console</a><a href="/mandate.html" aria-current="page">Instructions</a><a href="/council.html">Council</a><a href="/member.html">My seat</a><a href="/report.html">Report</a><a href="/policy">Policy</a><a href="/audit/verify">Audit</a></nav>
+      <div class="app-header-actions">
+        <a href="/audit" class="app-header-link"><span>Audit log</span></a>
+        <span class="app-chain"><span class="status-dot text-safe"></span><span id="chainTag">&mdash;</span></span>
+      </div>
+    </div>
+    <nav class="app-mobile-nav" aria-label="Primary mobile"><a href="/">Atlas</a><a href="/console.html">Console</a><a href="/mandate.html" aria-current="page">Instructions</a><a href="/council.html">Council</a><a href="/member.html">My seat</a><a href="/report.html">Report</a><a href="/policy">Policy</a><a href="/audit/verify">Audit</a></nav>
+  </header>
+  <main class="app-main">
+    <div class="doc-page">
+      <aside class="doc-margin">
+        <div class="doc-folio">Instructions</div>
+        <div class="doc-folio mt-1" id="mActive">No instruction</div>
+        <div class="cv-margin-notes">
+          <div class="doc-folio">Drafts<span class="cv-margin-big" id="mDrafts">0</span></div>
+          <div class="doc-folio">This month<span class="cv-margin-big" id="mMonth">&mdash;</span></div>
+        </div>
+        <div class="mt-6"><span class="doc-stamp" id="mStamp">Draft</span></div>
+      </aside>
+
+      <div class="doc-body">
+        <header>
+          <span class="doc-folio">Standing instruction · written once, in plain words</span>
+          <h1 class="doc-title mt-2 text-body">Tell the agent what it may pay. Once.</h1>
+          <p class="doc-deck mt-4 cv-lede">0G compiles your words into rules the code can check, shown back as a plain checklist. The council adopts them by majority vote and the rules' hash is anchored in the Hedera audit log. After that, payments inside the rules are co-signed with no vote; anything else goes to the council.</p>
+        </header>
+
+        <section class="doc-section" id="write" aria-labelledby="writeTitle">
+          <div class="doc-section-head"><h2 class="doc-section-title" id="writeTitle">Write the instruction</h2><span class="doc-folio">the AI turns words into rules; it never signs</span></div>
+          <form class="cv-compose" id="composeForm">
+            <label for="mandateText" class="doc-folio">The owner's instruction</label>
+            <textarea id="mandateText" class="cv-textarea" maxlength="1000" required rows="4" aria-describedby="mandateCount examplesLabel" placeholder="Pay registered vendors up to 50 HBAR each, at most 200 HBAR a month. Anything else goes to the council."></textarea>
+            <div>
+              <span class="doc-folio" id="examplesLabel">Examples · click to use</span>
+              <div class="cv-chips mt-2" id="examples">
+                <button type="button" class="cv-chip">Pay registered vendors up to 50 HBAR each, at most 200 HBAR a month. Anything else goes to the council.</button>
+                <button type="button" class="cv-chip">For catering, venue: pay any payee up to 20 HBAR each, max 100 HBAR per month. Refuse anything else.</button>
+                <button type="button" class="cv-chip">Pay 0.0.1001 and 0.0.1002 up to 5 HBAR each. Anything else goes to the council.</button>
+              </div>
+            </div>
+            <div class="cv-compose-foot">
+              <span class="cv-count" id="mandateCount">0 / 1000</span>
+              <button type="submit" class="btn btn-primary" id="compileBtn">Compile to rules</button>
+            </div>
+          </form>
+          <div id="workingBar" role="status" aria-live="polite"><div class="cap">Compiling with 0G · rules are validated strictly; bad output fails closed.</div></div>
+          <p id="status" class="cv-status" role="status" aria-live="polite"></p>
+        </section>
+
+        <section class="doc-section" id="draft" aria-labelledby="draftTitle">
+          <div class="doc-section-head"><h2 class="doc-section-title" id="draftTitle">Draft and adoption vote</h2><span class="doc-folio" id="draftFolio">&mdash;</span></div>
+          <div id="identity"></div>
+          <div id="qr" class="cv-qr" hidden></div>
+          <p id="voteStatus" class="cv-status" role="status" aria-live="polite"></p>
+          <div id="draftBox" class="mt-4"></div>
+        </section>
+
+        <section class="doc-section" id="active" aria-labelledby="activeTitle">
+          <div class="doc-section-head"><h2 class="doc-section-title" id="activeTitle">Active instruction</h2><span class="doc-folio" id="activeFolio">&mdash;</span></div>
+          <div id="activeBox"></div>
+        </section>
+
+        <section class="doc-section" id="history" aria-labelledby="historyTitle">
+          <div class="doc-section-head"><h2 class="doc-section-title" id="historyTitle">History</h2><span class="doc-folio" id="historyFolio">adopted, rejected, superseded</span></div>
+          <div id="historyBox"></div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <footer class="app-footer">
+    <div class="app-footer-inner">
+      <p id="footLeft">Council Agent, Mumbai 2026</p>
+      <div class="flex flex-wrap items-center gap-4"><p id="footRight">&mdash;</p></div>
+    </div>
+  </footer>
+</div>
+<script src="/vendor/idkit.js"></script>
+<script type="module">
+import { api, hbar } from "/assets/api.js";
+import { $, el, when, short, identities, loadWorld, feedback, mountIdentityBar, voteCard, updateVoteCard, showStamp, castBallot, sourceBadge, pill, poll, fillChrome } from "/assets/council-votes.js";
+import { countTo, reduced, stagger, whileWorking } from "/assets/motion.js";
+
+const fb = feedback($("status"), $("qr"));
+const voteFb = feedback($("voteStatus"), $("qr"));
+let world = { configured: false, mockedAllowed: false };
+let identity = identities.current();
+let state = null;
+let shownDraft = null;   // id of the draft in the draft card
+let lastSpent = null;
+let lastStatus = new Map();
+let bar;
+
+const STATUS_TONE = { open: "warn", adopted: "safe", rejected: "danger", superseded: "neutral" };
+const hashCode = (value, n = 16) => el("code", short(value, n), undefined, { title: value ?? "" });
+const rulesList = (summary) => { const ul = el("ul", undefined, "cv-rules"); summary.forEach((s) => ul.append(el("li", s))); return ul; };
+function sourceLine(d) {
+  const wrap = el("span", undefined, "cv-meta-source");
+  if (d.source === "0g") {
+    wrap.append(sourceBadge("0g"), " ", el("span", "0G request "), hashCode(d.requestId ?? "not returned", 18));
+  } else {
+    const b = sourceBadge("simulated"); b.textContent = "SIMULATED 0G";
+    wrap.append(b, " ", el("span", "no 0G key: deterministic parser"));
+  }
+  return wrap;
+}
+
+// ---- compose ----
+const text = $("mandateText");
+const count = () => { $("mandateCount").textContent = `${text.value.length} / 1000`; };
+text.addEventListener("input", count);
+$("examples").addEventListener("click", (e) => {
+  const chip = e.target.closest(".cv-chip");
+  if (!chip) return;
+  text.value = chip.textContent.trim(); count(); text.focus();
+});
+$("composeForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const value = text.value.trim();
+  if (!value) { fb.set("Write the instruction first, or click an example.", "bad"); text.focus(); return; }
+  const button = $("compileBtn");
+  button.disabled = true;
+  fb.set("Compiling the instruction into rules…", "wait");
+  try {
+    const res = await whileWorking($("workingBar"), () => api.draftMandate(value), 900);
+    if (res.ok) {
+      shownDraft = res.data.id;
+      fb.set(`Compiled ${res.data.id}${res.data.source === "simulated" ? " (SIMULATED 0G)" : " with 0G"}. The council now votes on adopting it.`, "ok");
+      await refresh();
+      $("draft").scrollIntoView({ behavior: reduced() ? "auto" : "smooth", block: "start" });
+    } else if (fb.needKey(res)) {
+      /* key form shown */
+    } else if (res.status === 409) {
+      $("status").replaceChildren(`${(res.data?.error || "Join the council first").replace(/\.*$/, "")}. `, el("a", "Join on the Council page", undefined, { href: "/council.html" }), ", then compile again.");
+      $("status").dataset.tone = "bad";
+    } else if (res.status === 422) {
+      fb.set(`${res.data?.error || "The rules could not be compiled."} No draft was created.`, "bad");
+    } else if (res.status === 404) {
+      fb.set("This server has no standing-instruction routes yet (POST /mandate/draft).", "bad");
+    } else fb.set(res.data?.error || "Could not compile the instruction.", "bad");
+  } catch {
+    fb.set("Could not reach the server. Try again.", "bad");
+  } finally { button.disabled = false; }
+};
+
+// ---- draft card ----
+async function onVote(item, choice, card) {
+  const res = await castBallot({ item, choice, world, identity, fb: voteFb });
+  const status = res.ok ? res.data.vote?.status : null;
+  if (status && status !== "open") {
+    lastStatus.set(item.subject, status);
+    showStamp(card, status === "passed");
+    voteFb.set(status === "passed" ? `${item.subject} adopted. Payments inside it are now co-signed with no vote.` : `${item.subject} rejected by the council.`, status === "passed" ? "ok" : "bad");
+  }
+  await refresh();
+}
+
+function renderDraft(drafts) {
+  const open = drafts.find((d) => d.status === "open");
+  const box = $("draftBox");
+  const d = open ?? drafts.find((x) => x.id === (shownDraft ?? box.dataset.id)) ?? null;
+  $("draftFolio").textContent = open ? `${open.id} · adoption vote open` : d ? `${d.id} · ${d.status}` : "no draft waiting";
+  if (!d) {
+    box.replaceChildren(el("p", "No draft is waiting for a vote. Write an instruction above and compile it.", "cv-empty"));
+    box.dataset.id = "";
+    return;
+  }
+  const item = { subject: d.id, kind: "mandate", title: `Adopt ${d.id}`, vote: d.vote };
+  const ctx = { world, identity, onVote, detail: () => el("p", `A majority of the ${d.vote.eligible.length} seat${d.vote.eligible.length === 1 ? "" : "s"} that existed when it was compiled. Later joiners cannot vote on it.`, "cv-muted") };
+  const prev = lastStatus.get(d.id);
+  if (box.dataset.id === d.id && box.dataset.identity === (identity?.seat ?? "")) {
+    const card = box.querySelector(".cv-card");
+    if (prev === "open" && d.vote.status !== "open") {
+      showStamp(card, d.vote.status === "passed");
+      voteFb.set(d.vote.status === "passed" ? `${d.id} adopted. Payments inside it are now co-signed with no vote.` : `${d.id} rejected by the council.`, d.vote.status === "passed" ? "ok" : "bad");
+    }
+    updateVoteCard(card, item, ctx);
+    const pillHost = box.querySelector(".cv-draft-status");
+    pillHost.replaceChildren(pill(STATUS_TONE[d.status] ?? "neutral", d.status));
+    box.querySelector(".cv-draft").dataset.status = d.status;
+    return;
+  }
+  box.dataset.id = d.id;
+  box.dataset.identity = identity?.seat ?? "";
+  const wrap = el("article", undefined, "cv-draft", { "data-status": d.status, "aria-label": `Draft ${d.id}` });
+  const top = el("div", undefined, "cv-card-head");
+  const left = el("span", `Draft ${d.id} · compiled ${when(d.createdAt)}`, "doc-folio");
+  const status = el("span", undefined, "cv-draft-status"); status.append(pill(STATUS_TONE[d.status] ?? "neutral", d.status));
+  top.append(left, status);
+  const grid = el("div", undefined, "cv-draft-grid");
+  const rules = el("div");
+  rules.append(el("span", "The owner wrote", "doc-folio"), el("blockquote", d.text, "cv-quote"), el("span", "The rules the code will check", "doc-folio cv-rules-head"));
+  rules.lastChild.style.display = "block"; rules.lastChild.style.marginTop = "16px";
+  const list = rulesList(d.summary); list.style.marginTop = "8px";
+  rules.append(list);
+  const meta = el("div", undefined, "cv-meta");
+  meta.append(sourceLine(d));
+  const rh = el("span"); rh.append("rules ", hashCode(d.rulesHash)); meta.append(rh);
+  const th = el("span"); th.append("text ", hashCode(d.textHash, 10)); meta.append(th);
+  if (d.model) meta.append(el("span", `model ${d.model}`));
+  rules.append(meta);
+  const card = voteCard(item, ctx);
+  grid.append(rules, card);
+  wrap.append(top, grid);
+  box.replaceChildren(wrap);
+  if (prev === undefined && d.vote.status !== "open") showStamp(card, d.vote.status === "passed", false);
+}
+
+function renderActive(active, spent, monthKey) {
+  $("mActive").textContent = active ? `Active: ${active.id}` : "No instruction";
+  $("mStamp").textContent = active ? active.id : "None";
+  $("activeFolio").textContent = active ? `${active.id} · adopted ${when(active.adoptedAt)}` : "none adopted";
+  const box = $("activeBox");
+  if (!active) {
+    box.replaceChildren(el("p", "No standing instruction is active. Every payment follows the default path: the field check, the payee registry, and a World ID approval for large amounts.", "cv-empty"));
+    box.dataset.id = ""; lastSpent = null;
+    $("mMonth").textContent = "—";
+    return;
+  }
+  const cap = active.rules.monthlyCapTinybars;
+  if (box.dataset.id !== active.id) {
+    box.dataset.id = active.id;
+    const card = el("article", undefined, "cv-active", { "aria-label": `Active standing instruction ${active.id}` });
+    card.append(el("span", `Standing instruction ${active.id}`, "doc-folio"), el("blockquote", active.text, "cv-quote"));
+    const list = rulesList(active.summary); list.style.marginTop = "12px"; card.append(list);
+    const meta = el("div", undefined, "cv-meta");
+    const rh = el("span"); rh.append("rules hash ", hashCode(active.rulesHash, 20)); meta.append(rh);
+    meta.append(el("span", `adopted ${when(active.adoptedAt)}`));
+    const a = active.adoptedAudit;
+    if (a) { const au = el("span"); au.append(`audit #${a.auditSeq ?? "?"} `, hashCode(a.auditHash, 12)); meta.append(au); if (a.auditTxId) meta.append(el("span", `HCS tx ${a.auditTxId}`)); }
+    meta.append(sourceLine(active));
+    card.append(meta);
+    const spend = el("div", undefined, "cv-spend", { id: "spend" });
+    spend.append(el("span", `Spent in ${monthKey} (UTC month)`, "doc-folio"));
+    const track = el("div", undefined, "cv-spend-track", { role: "progressbar", "aria-valuemin": "0", "aria-label": "Monthly spend" });
+    track.append(el("i", undefined, "cv-spend-fill"));
+    const nums = el("div", undefined, "cv-spend-nums");
+    const spentNode = el("span"); spentNode.append(el("b", "0", undefined, { id: "spentNum" }), " HBAR signed");
+    nums.append(spentNode, el("span", cap === null ? "no monthly cap" : `cap ${hbar(cap)}`, undefined, { id: "capText" }));
+    spend.append(track, nums, el("p", undefined, "cv-muted", { id: "spendNote", "aria-live": "polite" }));
+    card.append(spend);
+    box.replaceChildren(card);
+    lastSpent = null;
+  }
+  const spendEl = $("spend");
+  const pct = cap ? Math.min(100, (spent / cap) * 100) : 0;
+  spendEl.dataset.level = cap && spent > cap ? "over" : cap && spent / cap >= 0.8 ? "high" : "ok";
+  const track = spendEl.querySelector(".cv-spend-track");
+  track.setAttribute("aria-valuemax", String(cap ? cap / 1e8 : spent / 1e8));
+  track.setAttribute("aria-valuenow", String(spent / 1e8));
+  track.setAttribute("aria-valuetext", cap ? `${hbar(spent)} of ${hbar(cap)}` : `${hbar(spent)}, no cap`);
+  const fill = spendEl.querySelector(".cv-spend-fill");
+  if (lastSpent === null && !reduced()) { fill.style.width = "0%"; requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.width = `${cap ? pct : 0}%`; })); }
+  else fill.style.width = `${cap ? pct : 0}%`;
+  if (lastSpent !== spent) countTo($("spentNum"), spent / 1e8, { decimals: 2, duration: lastSpent === null ? 1200 : 700 });
+  $("spendNote").textContent = cap === null ? "No monthly cap: only the per-payment limit applies." : spent >= cap ? "The cap is reached: further payments open a council vote." : `${hbar(cap - spent)} left this month inside the instruction.`;
+  $("mMonth").textContent = cap ? `${Math.round(pct)}%` : "no cap";
+  lastSpent = spent;
+}
+
+function renderHistory(drafts) {
+  $("mDrafts").textContent = String(drafts.length);
+  const box = $("historyBox");
+  const key = JSON.stringify(drafts.map((d) => [d.id, d.status, d.vote.yes, d.vote.no]));
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  if (!drafts.length) { box.replaceChildren(el("p", "No drafts yet.", "cv-empty")); return; }
+  const table = el("table", undefined, "doc-ledger cv-ledger");
+  const hr = el("tr");
+  [["Draft", ""], ["Rules", ""], ["Hash", "cv-hide-sm"], ["Vote", "cv-num"], ["Status", ""]].forEach(([t, c]) => hr.append(el("th", t, c, { scope: "col" })));
+  const head = el("thead"); head.append(hr);
+  const body = el("tbody");
+  for (const d of drafts) {
+    const tr = el("tr", undefined, undefined, { "data-draft": d.id, "data-status": d.status });
+    const id = el("td"); id.append(el("b", d.id, "cv-mono"), el("br"), el("small", when(d.createdAt), "cv-muted"));
+    const rules = el("td", d.summary.join(" · "));
+    const hash = el("td", undefined, "cv-hide-sm"); hash.append(hashCode(d.rulesHash, 12));
+    const vote = el("td", `${d.vote.yes}–${d.vote.no} / ${d.vote.needed}`, "cv-num");
+    const st = el("td"); st.append(pill(STATUS_TONE[d.status] ?? "neutral", d.status));
+    if (d.source === "simulated") { st.append(el("br")); const b = sourceBadge("simulated"); b.textContent = "SIMULATED 0G"; st.append(b); }
+    tr.append(id, rules, hash, vote, st);
+    body.append(tr);
+  }
+  table.append(head, body);
+  box.replaceChildren(table);
+}
+
+async function refresh() {
+  const [m, s] = await Promise.all([api.mandate(), api.seats()]);
+  if (s.ok && bar.prune(s.data.seats.map((x) => x.seat))) identity = identities.current();
+  if (!m.ok) {
+    fb.set(m.status === 404 ? "This server has no standing-instruction routes yet (GET /mandate)." : m.data?.error || "Could not load the standing instruction.", "bad");
+    return;
+  }
+  state = m.data;
+  renderDraft(state.drafts);
+  renderActive(state.active, state.spentThisMonthTinybars ?? 0, state.monthKey ?? "this month");
+  renderHistory(state.drafts);
+  for (const d of state.drafts) lastStatus.set(d.id, d.vote.status);
+}
+
+world = await loadWorld();
+bar = mountIdentityBar($("identity"), { world, fb: voteFb, onChange: async (next) => { identity = next; $("draftBox").dataset.id = ""; await refresh(); } });
+count();
+fillChrome();
+try { await refresh(); } catch { fb.set("Could not load the standing instruction. Reload to retry.", "bad"); }
+document.body.dataset.state = "ready";
+if (!reduced()) stagger(document.querySelectorAll(".doc-body > header, .doc-section"), 0.05, 0.08);
+poll(refresh, 4000);
+</script>
+</body></html>

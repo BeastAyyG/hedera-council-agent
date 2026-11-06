@@ -1,224 +1,703 @@
 <!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
 <title>Council Agent · Console</title><link rel="icon" href="data:,">
-<link rel="stylesheet" href="/assets/theme.css">
+<link rel="stylesheet" href="/assets/console-original.css">
+<link rel="stylesheet" href="/assets/motion.css">
+<link rel="stylesheet" href="/assets/council-scene.css">
+<style>
+  :root{--paper:#f2efe7;--ink:#111110;--red:#e23b28;--muted:#8b857a;--hair:#d8d3c6}
+  body[data-page="console"]{overflow-x:clip}
+  body[data-page="console"] .doc-body,
+  body[data-page="console"] .doc-section,
+  body[data-page="console"] #selected,
+  body[data-page="console"] #process,
+  body[data-page="console"] #said{min-width:0}
+  body[data-page="console"] .doc-title{overflow-wrap:anywhere}
+  body[data-page="console"] #head-actions{align-items:stretch;gap:8px;max-width:100%}
+  body[data-page="console"] #head-actions .btn{height:auto;min-height:36px;max-width:100%;white-space:normal;text-align:left}
+  body[data-page="console"] #alert{margin-top:24px;padding:12px 14px;background:rgba(216,211,198,.2);transition:background-color .25s,border-color .25s}
+  body[data-page="console"] #alert[data-decision="SIGNED"]{background:rgba(28,107,69,.055)}
+  body[data-page="console"] #alert[data-decision="PENDING_CHALLENGE"],
+  body[data-page="console"] #alert[data-decision="PENDING_VOTE"]{background:rgba(154,107,21,.06)}
+  body[data-page="console"] #alert a{color:var(--color-signal);text-decoration:underline;text-underline-offset:3px}
+  body[data-page="console"] #alert[data-decision="REFUSED"],
+  body[data-page="console"] #alert[data-decision="CANCELLED"]{background:rgba(226,59,40,.05)}
+  body[data-page="console"] .console-record{table-layout:fixed}
+  body[data-page="console"] .console-record th{width:150px;vertical-align:baseline;padding-top:11px}
+  body[data-page="console"] .console-record td{overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+  body[data-page="console"] .console-disclosure{margin-top:18px;border-top:1px solid var(--hair);border-bottom:1px solid var(--hair)}
+  body[data-page="console"] .console-disclosure summary{display:flex;align-items:baseline;gap:12px;min-height:46px;padding:13px 0;cursor:pointer;list-style:none;color:var(--ink);font-size:13px}
+  body[data-page="console"] .console-disclosure summary::-webkit-details-marker{display:none}
+  body[data-page="console"] .console-disclosure summary::before{content:"+";flex:0 0 16px;color:var(--red);font:16px/1 ui-monospace,monospace}
+  body[data-page="console"] .console-disclosure[open] summary::before{content:"−"}
+  body[data-page="console"] .console-disclosure summary:hover{color:var(--red)}
+  body[data-page="console"] .console-disclosure summary:focus-visible{outline:2px solid var(--red);outline-offset:4px}
+  body[data-page="console"] .console-disclosure .summary-meta{margin-left:auto;color:var(--muted);font:9px/1.5 ui-monospace,monospace;letter-spacing:.04em;text-align:right}
+  body[data-page="console"] .disclosure-body{padding:2px 0 16px 28px}
+  body[data-page="console"] #technicalLedger th{width:140px}
+  body[data-page="console"] #hashes{margin-top:12px}
+  body[data-page="console"] #responseDetails{margin-top:28px}
+  body[data-page="console"] #result{max-width:100%;overflow:auto;overflow-wrap:anywhere;background:rgba(255,255,255,.28)}
+  body[data-page="console"] .response-empty{margin:0 0 14px;color:var(--muted);font-size:11px}
+  body[data-page="console"] #journey,
+  body[data-page="console"] #transfer{min-width:0;max-width:100%}
+  body[data-page="console"] #transfer{margin-bottom:20px}
+  body[data-page="console"] #flow{display:none}
+  body[data-page="console"] #flow .cap{margin-bottom:14px}
+  body[data-page="console"] .flow[data-end="wait"] .fill,
+  body[data-page="console"] .flow[data-end="wait"] .packet{background:var(--color-signal)}
+  body[data-page="console"] .flow[data-static="true"] .node.lit i{animation:none}
+  body[data-page="console"] #process>[data-tone="warn"]{background:rgba(154,107,21,.035)}
+  body[data-page="console"] #process>[data-tone="danger"]{background:rgba(226,59,40,.035)}
+  body[data-page="console"] .proposal-identity{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(180px,.5fr);gap:20px}
+  body[data-page="console"] .proposal-transfer-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;margin-top:24px}
+  body[data-page="console"] .proposal-transfer-grid fieldset{min-width:0;border:0;border-top:1px solid var(--hair);padding:12px 0 0}
+  body[data-page="console"] .proposal-transfer-grid legend{padding:0 12px 0 0;color:var(--red);font:10px/1.5 ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase}
+  body[data-page="console"] .proposal-field{display:flex;flex-direction:column;gap:7px;min-width:0;margin-top:14px}
+  body[data-page="console"] .proposal-field input{width:100%;min-width:0;height:42px;border:1px solid var(--hair);background:rgba(255,255,255,.35);padding:0 12px;color:var(--ink);font-size:13px;transition:border-color .15s,background-color .15s,box-shadow .15s}
+  body[data-page="console"] .proposal-field input:hover{border-color:var(--color-edge2)}
+  body[data-page="console"] .proposal-field input:focus{border-color:var(--red);background:var(--paper);box-shadow:0 1px 0 var(--red);outline:2px solid transparent}
+  body[data-page="console"] .proposal-field input:focus-visible{outline:2px solid var(--red);outline-offset:2px}
+  body[data-page="console"] .proposal-submit{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:14px;margin-top:24px}
+  body[data-page="console"] .proposal-submit p{max-width:48ch;color:var(--muted);font-size:11px;line-height:1.5}
+  body[data-page="console"] #proposals .doc-ledger{table-layout:fixed}
+  body[data-page="console"] #proposals .doc-ledger td:nth-child(1){width:20%}
+  body[data-page="console"] #proposals .doc-ledger td:nth-child(3),
+  body[data-page="console"] #proposals .doc-ledger td:nth-child(4){width:110px;text-align:right}
+  body[data-page="console"] #proposals tr[tabindex]{transition:background-color .15s}
+  body[data-page="console"] #proposals tr[tabindex]:focus-visible{outline:2px solid var(--red);outline-offset:-2px}
+  body[data-page="console"] #proposals td:nth-child(2){overflow-wrap:anywhere;color:var(--color-dim)}
+  body[data-page="console"] #qr:not(:empty){width:min(100%,280px);margin-top:16px;border:1px solid var(--hair);background:rgba(255,255,255,.35);padding:14px}
+  body[data-page="console"] #qr:not(:empty)::before{content:"WORLD ID / SCAN WITH WORLD APP";display:block;margin-bottom:10px;color:var(--red);font:9px/1.5 ui-monospace,monospace;letter-spacing:.08em}
+  body[data-page="console"] #qr img{max-width:100%;height:auto}
+  body[data-page="console"] #status:not(:empty){max-width:70ch;margin-top:14px;border-left:2px solid var(--hair);padding:8px 12px;line-height:1.55;overflow-wrap:anywhere}
+  body[data-page="console"] #status[data-tone="wait"]{border-left-color:var(--color-signal);background:rgba(154,107,21,.05)}
+  body[data-page="console"] #status[data-tone="ok"]{border-left-color:var(--color-safe);background:rgba(28,107,69,.05)}
+  body[data-page="console"] #status[data-tone="bad"]{border-left-color:var(--red);background:rgba(226,59,40,.05)}
+  body[data-page="console"] #keybox{flex-wrap:wrap}
+  body[data-page="console"] #keyinput{min-width:0;max-width:100%}
+  @media (max-width:700px){
+    body[data-page="console"] .proposal-identity,
+    body[data-page="console"] .proposal-transfer-grid{grid-template-columns:minmax(0,1fr);gap:16px}
+    body[data-page="console"] .proposal-transfer-grid{margin-top:16px}
+    body[data-page="console"] .proposal-submit{align-items:flex-start;flex-direction:column}
+    body[data-page="console"] .console-record th{width:112px;padding-right:10px}
+    body[data-page="console"] .disclosure-body{padding-left:0}
+    body[data-page="console"] .console-disclosure .summary-meta{max-width:45%}
+    body[data-page="console"] #proposals table,
+    body[data-page="console"] #proposals tbody{display:block}
+    body[data-page="console"] #proposals tr[tabindex]{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:11px 0;border-bottom:1px solid var(--hair)}
+    body[data-page="console"] #proposals .doc-ledger td{display:block;width:auto!important;border:0;padding:0;text-align:left!important}
+    body[data-page="console"] #proposals .doc-ledger td:nth-child(1){grid-column:1;grid-row:1}
+    body[data-page="console"] #proposals .doc-ledger td:nth-child(2){grid-column:1/-1;grid-row:2;font-size:11px}
+    body[data-page="console"] #proposals .doc-ledger td:nth-child(3){display:none}
+    body[data-page="console"] #proposals .doc-ledger td:nth-child(4){grid-column:2;grid-row:1}
+  }
+  @media (prefers-reduced-motion:reduce){
+    body[data-page="console"] #alert,
+    body[data-page="console"] .proposal-field input,
+    body[data-page="console"] #proposals tr[tabindex]{transition:none}
+  }
+</style>
 </head><body data-page="console" data-state="loading">
-<div class="frame">
-  <aside class="vrail"><span>Council</span></aside>
-  <div class="stage">
-    <div class="bar">
-      <a class="brand" href="/">Council <em>Agent</em></a>
-      <nav><a href="/">Atlas</a><a href="/console.html" aria-current="page">Console</a><a href="/console.html#join">Join</a></nav>
-      <div class="chips" id="chips"></div>
+<div class="app-shell">
+  <aside class="app-rail" aria-hidden="true">
+    <a href="/" class="app-rail-mark">COUNCIL</a>
+    <span class="app-rail-rule"></span>
+    <span class="app-rail-meta">Council Agent, Vol. 1</span>
+  </aside>
+  <div class="app-rail-r" aria-hidden="true"><span class="app-dot"></span><span class="app-rail-meta" id="railMode">&mdash;</span></div>
+
+  <header class="app-header">
+    <div class="app-header-inner">
+      <a href="/" class="app-wordmark"><span class="app-wordmark-mark" aria-hidden="true"></span><span class="app-wordmark-text">Council <em>Agent</em></span></a>
+      <span class="app-header-note">Working papers</span>
+      <nav class="app-nav" aria-label="Primary">
+        <a href="/">Atlas</a>
+        <a href="/console.html" aria-current="page">Console</a>
+        <a href="/mandate.html">Instructions</a>
+        <a href="/council.html">Council</a>
+        <a href="/member.html">My seat</a>
+        <a href="/report.html">Report</a>
+        <a href="/policy">Policy</a>
+        <a href="/audit/verify">Audit</a>
+      </nav>
+      <div class="app-header-actions">
+        <a href="/audit" class="app-header-link"><span>Audit log</span></a>
+        <span class="app-chain"><span class="status-dot text-safe"></span><span id="chainTag">&mdash;</span></span>
+      </div>
     </div>
-    <main class="console">
-      <aside id="meta"></aside>
-      <div>
-        <!-- CONSOLE: #banner, #head (selected proposal), #record, #process, then #new, #proposals, #join -->
-        <div id="banner" class="banner" hidden></div>
-        <div class="kicker" id="kicker">Council console</div>
-        <h1 class="h1" id="title">Console</h1>
-        <p class="prose" id="lede" style="max-width:62ch">Submit a proposal, watch the agent check it against the chain, approve large ones with World ID, and join the council. Pick a proposal below to open its record.</p>
-        <div class="actions" id="head-actions"></div>
+    <nav class="app-mobile-nav" aria-label="Primary mobile"><a href="/">Atlas</a><a href="/console.html" aria-current="page">Console</a><a href="/mandate.html">Instructions</a><a href="/council.html">Council</a><a href="/member.html">My seat</a><a href="/report.html">Report</a><a href="/policy">Policy</a><a href="/audit/verify">Audit</a></nav>
+  </header>
 
-        <section id="record" aria-label="Selected proposal"></section>
+  <main class="app-main">
+    <div class="doc-page">
+      <aside class="doc-margin">
+        <div class="doc-folio" id="mRecord">Record 00</div>
+        <div class="doc-folio mt-1" id="mId">No proposal</div>
+        <div class="doc-folio mt-1" id="mDate">&mdash;</div>
+        <div class="mt-7 border-t border-edge pt-3" id="mNotes"></div>
+        <div class="mt-6"><span class="doc-stamp" id="mStamp">Simulated</span></div>
+      </aside>
 
-        <section class="sec" id="new" aria-label="New proposal">
-          <h2>New proposal <small>description vs actual transfer</small></h2>
-          <form id="new-form">
-            <div class="formgrid">
-              <div><label for="f-purpose">Purpose</label><input id="f-purpose" name="purpose" value="Pay the venue deposit" required maxlength="200"></div>
-              <div><label for="f-id">Proposal id</label><input id="f-id" name="id" required pattern="[A-Za-z0-9_\-]{1,64}"></div>
-              <div><label for="f-payee">Described payee</label><input id="f-payee" name="payee" value="0.0.1001" required></div>
-              <div><label for="f-amount">Described amount (HBAR)</label><input id="f-amount" name="amount" value="0.1" required></div>
-              <div><label for="f-tpayee">Actual transfer payee</label><input id="f-tpayee" name="tpayee" value="0.0.1001" required></div>
-              <div><label for="f-tamount">Actual transfer amount (HBAR)</label><input id="f-tamount" name="tamount" value="0.1" required></div>
+      <div class="doc-body">
+        <div class="border-l-2 border-danger pl-3 text-[12px] leading-relaxed text-dim" id="alert">No proposal selected.</div>
+
+        <header class="mt-7">
+          <div class="flex flex-wrap items-baseline justify-between gap-2"><span class="doc-folio" id="folio">Council console · Decision trail</span><span id="topPill"></span></div>
+          <h1 class="doc-title mt-2 text-body" id="title">One agent. One signing seat.</h1>
+          <p class="doc-deck mt-4" id="lede">Choose a proposal, or submit a transfer below.</p>
+          <div class="mt-5 flex flex-wrap gap-2" id="head-actions"></div>
+          <div id="workingBar" role="status" aria-live="polite">
+            <div class="cap">Request in progress · waiting for the agent’s response.</div>
+          </div>
+        </header>
+
+        <div id="selected" hidden>
+          <section class="doc-section" id="journeySection" aria-label="Illustrated decision replay">
+            <div id="journey"></div>
+          </section>
+          <section class="doc-section" id="recordSection">
+            <div class="doc-section-head"><h2 class="doc-section-title">Record</h2><span class="doc-folio" id="recFolio"></span></div>
+            <div id="transfer"></div>
+            <table class="doc-ledger console-record"><tbody id="ledger"></tbody></table>
+            <details class="console-disclosure" id="technicalProof">
+              <summary><span>Technical proof</span><span class="summary-meta">schedule · payments · audit</span></summary>
+              <div class="disclosure-body">
+                <table class="doc-ledger console-record"><tbody id="technicalLedger"></tbody></table>
+                <div id="hashes"></div>
+              </div>
+            </details>
+          </section>
+
+          <details class="console-disclosure" id="processSection">
+            <summary><span>Decision checks</span><span class="summary-meta">claim · check · gate · sign</span></summary>
+            <div class="disclosure-body">
+              <section class="flow" id="flow" aria-label="Decision path" aria-hidden="true">
+                <div class="cap"><span>Decision path</span><span id="flowCap">not yet decided</span></div>
+                <div class="line"><span class="fill"></span><span class="packet"></span></div>
+                <div class="nodes" id="flowNodes"></div>
+              </section>
+              <div class="grid gap-0 md:grid-cols-2 xl:grid-cols-4" id="process"></div>
+              <p class="doc-note mt-3">Payee, amount and token are compared exactly. No model is in the decision path.</p>
             </div>
-            <p class="actions"><button type="submit">Submit to the agent</button><span class="muted" style="align-self:center">Make the actual transfer differ to see a refusal.</span></p>
+          </details>
+
+          <details class="console-disclosure" id="comparisonDetails">
+            <summary><span>Field-by-field comparison</span><span class="summary-meta">described / actual</span></summary>
+            <div class="disclosure-body"><div class="grid gap-8 lg:grid-cols-2" id="said"></div></div>
+          </details>
+        </div>
+
+        <section class="doc-section" id="new">
+          <div class="doc-section-head"><h2 class="doc-section-title">New proposal</h2><span class="doc-folio">make the transfer differ to see a refusal</span></div>
+          <form id="new-form">
+            <div class="proposal-identity">
+              <label class="proposal-field"><span class="doc-folio">Purpose</span><input id="f-purpose" name="purpose" value="Pay the venue deposit" required maxlength="200"></label>
+              <label class="proposal-field"><span class="doc-folio">Proposal id</span><input id="f-id" name="id" required pattern="[A-Za-z0-9_\-]{1,64}"></label>
+            </div>
+            <div class="proposal-transfer-grid">
+              <fieldset>
+                <legend>Described transfer</legend>
+                <label class="proposal-field"><span class="doc-folio">Payee</span><input id="f-payee" name="payee" value="0.0.1001" required></label>
+                <label class="proposal-field"><span class="doc-folio">Amount (HBAR)</span><input id="f-amount" name="amount" value="0.1" required inputmode="decimal"></label>
+              </fieldset>
+              <fieldset>
+                <legend>Actual transfer</legend>
+                <label class="proposal-field"><span class="doc-folio">Payee</span><input id="f-tpayee" name="tpayee" value="0.0.1001" required></label>
+                <label class="proposal-field"><span class="doc-folio">Amount (HBAR)</span><input id="f-tamount" name="tamount" value="0.1" required inputmode="decimal"></label>
+              </fieldset>
+            </div>
+            <div class="proposal-submit"><p>Different payees or amounts will fail the check.</p><button type="submit" class="btn btn-primary">Submit to the agent</button></div>
           </form>
         </section>
 
-        <section class="sec" id="proposals" aria-label="Proposals"></section>
+        <section class="doc-section" id="proposals"></section>
 
-        <section class="sec" id="join" aria-label="Join the council">
-          <h2>Council seats <small>one person, one seat</small></h2>
-          <p id="seats"></p>
-          <button id="join-btn" class="secondary">Join the council (World ID)</button>
+        <section class="doc-section" id="join">
+          <div class="doc-section-head"><h2 class="doc-section-title">Council seats</h2><span class="doc-folio">one person, one seat, keyed by the World ID nullifier</span></div>
+          <p id="seats" class="text-[12px] text-body"></p>
+          <div class="mt-4"><button id="join-btn" class="btn">Join the council (World ID)</button></div>
         </section>
 
         <div id="qr"></div>
-        <p id="status" role="status"></p>
-        <pre id="result" hidden></pre>
+        <p id="status" role="status" class="mt-4 text-[12px]"></p>
+        <form id="keybox" hidden class="mt-2 flex items-center gap-2"><input id="keyinput" type="password" autocomplete="off" placeholder="API key" aria-label="API key" class="h-8 border border-edge2 bg-panel2 px-2.5 text-[12px] text-body"><button type="submit" class="btn">Use key</button></form>
+        <details class="console-disclosure" id="responseDetails">
+          <summary><span>Response JSON</span><span class="summary-meta">raw server response</span></summary>
+          <div class="disclosure-body"><p class="response-empty">Submit a proposal or run an action to record a response.</p><pre id="result" hidden class="hash max-h-64 overflow-auto whitespace-pre-wrap border border-edge p-3"></pre></div>
+        </details>
       </div>
-    </main>
-  </div>
+    </div>
+  </main>
+
+  <footer class="app-footer">
+    <div class="app-footer-inner">
+      <p id="footLeft">Council Agent, Mumbai 2026</p>
+      <div class="flex flex-wrap items-center gap-4"><p id="footRight">&mdash;</p></div>
+    </div>
+  </footer>
 </div>
 <script src="/vendor/idkit.js"></script>
 <script type="module">
 import { api, bus, hbar, qs } from "/assets/api.js";
 import { runWorldFlow, runMockedFlow } from "/assets/world-flow.js";
+import { replay, stagger, whileWorking as animateWorking, reduced, runFlow } from "/assets/motion.js";
+import { initJudge } from "/assets/judge.js";
+import { mountJourney, renderTransfer } from "/assets/council-scene.js";
 import { mountCompanion } from "/assets/scroll-companion.js";
 const $ = (id) => document.getElementById(id);
 const el = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
-const status = (t, cls = "") => { $("status").textContent = t; $("status").className = cls; };
-const show = (o) => { $("result").hidden = false; $("result").textContent = JSON.stringify(o, null, 2); };
+const status = (t, tone = "") => {
+  $("status").textContent = t;
+  $("status").dataset.tone = tone || "neutral";
+  $("status").className = `text-[12px] ${tone === "ok" ? "text-safe" : tone === "bad" ? "text-danger" : tone === "wait" ? "text-signal" : "text-dim"}`;
+};
+const show = (o) => {
+  $("result").hidden = false;
+  $("result").textContent = JSON.stringify(o, null, 2);
+  $("responseDetails").querySelector(".response-empty").hidden = true;
+};
+const placeFeedback = (anchor) => anchor.after($("qr"), $("status"));
 const toTiny = (h) => Math.round(Number(h) * 1e8);
-const th = (t) => { const x = el("th", t); return x; };
+
+// Decision labels. PENDING_CHALLENGE and PENDING_VOTE are not yet decided: never shown as refused.
+const LABEL = { SIGNED: "signed", REFUSED: "refused", PENDING_CHALLENGE: "pending", PENDING_VOTE: "council vote", CANCELLED: "cancelled" };
+const decisionPill = (d, challenged) => d === "SIGNED" ? pill("safe", "signed") : d === "PENDING_CHALLENGE" ? pill("warn", challenged ? "challenged" : "challenge window") : d === "PENDING_VOTE" ? pill("warn", "waiting for the council") : pill("danger", LABEL[d] ?? d.toLowerCase());
+const outcomeStatus = (d) => d.decision === "SIGNED" ? ["Agent signed. Proof is in the record.", "ok"]
+  : d.decision === "PENDING_CHALLENGE" ? [`Challenge window until ${new Date(d.challengeUntil).toLocaleTimeString()}. Not signed yet.`, "wait"]
+  : d.decision === "PENDING_VOTE" ? ["Outside the standing instruction: waiting for the council. Nothing is signed until a majority votes on the Council page.", "wait"]
+  : [d.decision === "CANCELLED" ? "Cancelled. See technical proof." : "Agent refused. See technical proof.", "bad"];
+const authHeaders = () => { const k = sessionStorage.getItem("councilKey"); return k ? { Authorization: `Bearer ${k}` } : {}; };
+const post = async (path, body) => { const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body ?? {}) }); return { ok: r.ok, status: r.status, data: await r.json().catch(() => ({})) }; };
+// A 401 means the server has an API key: say so and offer the key box.
+function needKey(res) {
+  if (res.status !== 401) return false;
+  status("This server needs an API key", "bad"); $("keybox").hidden = false; $("keyinput").focus();
+  return true;
+}
+$("keybox").onsubmit = (e) => { e.preventDefault(); sessionStorage.setItem("councilKey", $("keyinput").value.trim()); $("keyinput").value = ""; $("keybox").hidden = true; status("API key stored for this session. Try again."); };
+
+const TONE = { safe: ["text-safe", "●"], warn: ["text-signal", "◐"], danger: ["text-danger", "✕"], neutral: ["text-dim", "○"] };
+function pill(tone, label) {
+  const s = el("span", undefined, `inline-flex items-baseline gap-1.5 font-sans text-[10.5px] leading-none ${TONE[tone][0]}`);
+  s.append(el("span", TONE[tone][1], "text-[9px]"), el("span", label)); return s;
+}
+function hashLine(label, value) {
+  const row = el("div", undefined, "flex min-w-0 flex-col gap-1.5 border-b border-edge/70 py-2.5 last:border-0");
+  row.append(el("span", label, "mono-label"), el("code", value || "none yet", "hash block min-w-0 max-w-full truncate")); return row;
+}
+function ledgerRow(label, content, cls) {
+  const tr = document.createElement("tr"); const th = el("th", label); th.className = "w-[130px]"; th.scope = "row";
+  const td = document.createElement("td"); if (content instanceof Node) td.append(content); else { td.textContent = content; if (cls) td.className = cls; }
+  tr.append(th, td); return tr;
+}
+function mandateLine(m, vote) {
+  if (m.within) return `Within standing instruction ${m.id}.`;
+  const why = (m.violations ?? []).join("; ");
+  return `Outside standing instruction ${m.id}${why ? `: ${why}` : ""}.${vote?.status === "passed" ? " Approved by council vote." : vote?.status === "failed" ? " Refused by council vote." : ""}`;
+}
+function ring(value, tone, label) {
+  const w = el("div"); const n = el("div", undefined, "flex items-baseline gap-2");
+  n.append(el("span", value, `doc-score ${tone === "safe" ? "text-safe" : tone === "danger" ? "text-danger" : "text-body"}`), el("span", label, "font-sans text-[10px] text-faint"));
+  const bar = el("div", undefined, "mt-2 h-px w-full bg-edge"); w.append(n, bar); return w;
+}
 
 let world = { configured: false, mockedAllowed: false };
 let health = {};
 let selected = qs("proposal");
+let rowsCache = [];
+let entered = false;
+let selectedRecord = null;
+let selectionVersion = 0;
+let listVersion = 0;
+const journey = mountJourney($("journey"));
+mountCompanion({ decisionHost: $("journey") });
+
+function restoreJourney() {
+  journey.setActivity("idle");
+  if (selectedRecord) journey.update(selectedRecord, { animate: false });
+}
+
+async function withAction(button, work) {
+  const wasDisabled = button.disabled;
+  button.disabled = true;
+  try { return await work(); }
+  catch {
+    restoreJourney();
+    status("Request failed. Check your connection and try again.", "bad");
+  } finally { button.disabled = wasDisabled; }
+}
+
+// Settle transport errors inside the motion helper so its timer always stops.
+async function whileWorking(bar, work, min) {
+  journey.setActivity("working");
+  try {
+    const result = await animateWorking(bar, async () => {
+      try { return { value: await work() }; }
+      catch (error) { return { error }; }
+    }, min);
+    if ("error" in result) throw result.error;
+    return result.value;
+  } finally { restoreJourney(); }
+}
+
+const requestError = (res) => status(`${res.data?.error || "Request failed."} Try again.`, "bad");
+const refreshAfterAction = (id, version, options) => version === selectionVersion && selected === id
+  ? select(id, options) : refreshList();
 
 async function refreshSeats() {
-  const s = (await api.seats()).data;
+  const res = await api.seats();
+  if (!res.ok) { requestError(res); return; }
+  const s = res.data;
   $("seats").textContent = `${s.count} seat${s.count === 1 ? "" : "s"} held.`;
 }
 
 async function refreshList() {
-  const rows = (await api.proposals()).data.proposals ?? [];
+  const version = ++listVersion;
+  const res = await api.proposals();
+  if (version !== listVersion) return;
+  if (!res.ok) { requestError(res); return; }
+  const rows = rowsCache = res.data.proposals ?? [];
   const box = $("proposals");
-  const t = el("table", undefined, "list");
-  const head = t.createTHead().insertRow();
-  for (const x of ["Proposal", "Amount", "Check", "Decision"]) head.append(th(x));
-  const body = t.createTBody();
+  const head = el("div", undefined, "doc-section-head"); head.append(el("h2", "Proposals", "doc-section-title"), el("span", `${rows.length} registered`, "doc-folio"));
+  box.replaceChildren(head);
+  if (!rows.length) { box.append(el("p", "No proposals yet.", "text-[12px] text-dim")); return; }
+  const t = el("table", undefined, "doc-ledger"); const tb = document.createElement("tbody");
   for (const p of rows) {
-    const tr = body.insertRow(); tr.dataset.proposal = p.id; tr.dataset.decision = p.decision ?? "PENDING"; tr.dataset.selected = String(p.id === selected);
-    tr.insertCell().textContent = `${p.id}${p.large ? " · large" : ""}`;
-    tr.insertCell().textContent = hbar(p.amountTinybars);
-    const c = tr.insertCell(); c.textContent = p.matches ? "matches" : "MISMATCH"; c.className = p.matches ? "green" : "red";
-    const d = tr.insertCell(); d.textContent = p.decision ?? "not submitted"; d.className = "dec"; d.dataset.decision = p.decision ?? "PENDING";
+    const tr = document.createElement("tr"); tr.dataset.proposal = p.id; tr.dataset.decision = p.decision ?? "PENDING"; tr.dataset.selected = String(p.id === selected);
+    tr.className = `cursor-pointer hover:bg-panel ${p.id === selected ? "bg-panel" : ""}`;
+    const a = document.createElement("td"); a.className = "font-mono"; a.textContent = `${p.id}${p.large ? " · large" : ""}`;
+    const b = document.createElement("td"); b.textContent = `${p.purpose} · ${hbar(p.amountTinybars)}`;
+    const c = document.createElement("td"); c.append(pill(p.matches ? "safe" : "danger", p.matches ? "matches" : "mismatch"));
+    const d = document.createElement("td"); d.append(p.decision ? decisionPill(p.decision, p.challenged) : pill("neutral", "not submitted"));
+    tr.append(a, b, c, d);
+    tr.tabIndex = 0;
+    tr.setAttribute("role", "button");
+    tr.setAttribute("aria-label", `Open proposal ${p.id}: ${p.purpose}`);
     tr.onclick = () => select(p.id);
+    tr.onkeydown = (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(p.id); } };
+    tb.append(tr);
   }
-  box.replaceChildren(el("h2", undefined), rows.length ? t : el("p", "No proposals yet.", "muted"));
-  box.firstChild.append(document.createTextNode("Proposals"), Object.assign(el("small"), { textContent: `${rows.length} registered` }));
+  t.append(tb); box.append(t);
 }
 
-function step(no, title, state, tag, text) {
-  const s = el("div", undefined, "step"); s.dataset.state = state;
-  const n = el("div", undefined, "no"); n.append(el("span", `0${no}`), el("span", tag, "st"));
-  s.append(n, el("h3", title), el("p", text));
+function stage(index, name, tone, tag, score, scoreLabel, reason, hard) {
+  // Outer cell reveals in; the inner wrapper takes the flash and shake, so the two animations never replace each other.
+  const s = el("div", undefined, `border-t border-edge py-3 text-left md:px-4 xl:border-l xl:first:border-l-0 xl:pl-4 xl:first:pl-0 ${hard ? "border-t-danger" : ""}`);
+  s.dataset.tone = tone;
+  const inner = el("div", undefined, "stage-inner");
+  const top = el("div", undefined, "flex items-baseline justify-between gap-3"); top.append(el("span", index, "doc-folio"), pill(tone, tag));
+  inner.append(top, el("div", name, "mt-2 text-[14px] font-medium text-body"), (() => { const r = el("div", undefined, "mt-4"); r.append(ring(score, tone, scoreLabel)); return r; })(), el("p", reason, "mt-3 text-[11.5px] leading-snug text-dim"));
+  s.append(inner);
   return s;
 }
 
-async function select(id) {
+async function select(id, { land = false } = {}) {
+  const version = ++selectionVersion;
+  const changed = selectedRecord?.proposal.id !== id;
   selected = id;
-  history.replaceState(null, "", `?proposal=${encodeURIComponent(id)}`);
-  const r = await api.proposal(id);
-  const box = $("record");
-  if (!r.ok) { box.replaceChildren(el("p", r.data.error, "red")); return; }
-  const { proposal: p, check, lastOutcome: o, large, approval } = r.data;
+  const url = new URL(location.href);
+  url.searchParams.set("proposal", id);
+  history.replaceState(null, "", url);
+  let r;
+  try { r = await api.proposal(id); }
+  catch {
+    if (version === selectionVersion) {
+      restoreJourney();
+      status("Could not load this proposal. Select it again to retry.", "bad");
+    }
+    return;
+  }
+  if (version !== selectionVersion) return;
+  if (!r.ok) { requestError(r); return; }
+  selectedRecord = r.data;
+  const { proposal: p, check, lastOutcome: o, large, approval, challenge } = r.data;
   const decision = o?.decision ?? null;
+  const pending = decision === "PENDING_CHALLENGE";
+  const voting = decision === "PENDING_VOTE";
+  const mandate = o?.mandate ?? null;
+  const vote = o?.vote ?? r.data.vote ?? null;
+  const until = o?.challengeUntil ? new Date(o.challengeUntil).toLocaleTimeString() : "";
+  const idx = rowsCache.findIndex((x) => x.id === id);
 
-  // Banner and headline
-  const b = $("banner"); b.hidden = !o; b.className = `banner ${decision === "SIGNED" ? "ok" : "bad"}`;
-  if (o) b.replaceChildren(el("b", decision === "SIGNED" ? "Agent signed. " : "Agent refused. "), document.createTextNode(o.reason.slice(0, 220)));
-  $("kicker").textContent = `Proposal ${p.id} · decision trail`;
+  $("selected").hidden = false;
+  $("selected").dataset.decision = decision ?? "PENDING";
+  journey.setActivity("idle");
+  journey.update(r.data, { animate: entered && (land || changed) });
+  renderTransfer($("transfer"), p);
+  $("mRecord").textContent = `Record ${String(idx + 1 || rowsCache.length + 1).padStart(2, "0")}`;
+  $("mId").textContent = p.id; $("mDate").textContent = new Date(p.createdAt).toLocaleDateString();
+  $("mNotes").replaceChildren(...[decision === "SIGNED" ? "Agent signed" : decision === "REFUSED" ? "Agent refused" : pending ? (challenge?.challenged ? "Challenged, execution paused" : "Waiting out the challenge window") : voting ? "Waiting for the council" : decision === "CANCELLED" ? "Cancelled by a seat revocation" : "Awaiting the agent", check.matches ? "Check passed" : "Check failed", mandate ? (mandate.within ? `Within ${mandate.id}` : `Outside ${mandate.id}`) : large ? "Large: World ID gate" : "Routine"].map((t, i) => el("div", t, `doc-note ${i ? "mt-1" : ""}`)));
+  const stamp = $("mStamp"); stamp.textContent = decision ? LABEL[decision] ?? decision.toLowerCase() : health.mode === "real" ? "Real mode" : "Simulated"; const stampTone = decision === "SIGNED" ? "var(--color-safe)" : pending || voting ? "var(--color-signal)" : ""; stamp.style.color = stampTone; stamp.style.borderColor = stampTone;
+
+  const al = $("alert"); al.className = `border-l-2 ${decision === "SIGNED" ? "border-safe" : pending || voting ? "border-signal" : "border-danger"} text-[12px] leading-relaxed text-dim`;
+  al.dataset.decision = decision ?? "PENDING";
+  al.replaceChildren(el("span", decision === "SIGNED" ? "Agent signed." : decision === "REFUSED" ? "Agent refused." : pending ? (challenge?.challenged ? "Challenged · execution paused." : "Challenge window · not signed yet.") : voting ? "Waiting for the council · not signed." : decision === "CANCELLED" ? "Cancelled by a seat revocation." : "Not yet submitted.", decision === "SIGNED" ? "text-safe" : pending || voting ? "text-signal" : "text-danger"));
+  if (voting) { const link = el("a", "Vote on the Council page"); link.href = "/council.html"; al.append(" ", link, vote ? ` · ${vote.yes} yes, ${vote.no} no, ${vote.needed} of ${vote.eligible.length} needed` : ""); }
+  $("folio").textContent = `Proposal ${p.id} · Decision trail`;
+  $("topPill").replaceChildren(decision ? decisionPill(decision, challenge?.challenged) : pill("neutral", "pending"));
   $("title").textContent = p.description.purpose;
-  $("lede").textContent = check.verdict;
-  $("lede").className = `prose ${check.matches ? "" : "red"}`;
+  $("lede").textContent = check.matches ? "Description and transfer match." : `Transfer differs: ${check.mismatches.map((m) => m.field === "amountTinybars" ? "amount" : m.field).join(", ")}.`;
   document.title = `Council Agent · ${p.id}`;
-  $("meta").replaceChildren(...[`Record ${p.id}`, large ? "Large proposal" : "Routine proposal", new Date(p.createdAt).toLocaleDateString()].map((t) => el("div", t)),
-    el("div", health.mode === "real" ? "Real mode" : "SIMULATED", "tagbox"));
 
-  // Actions: submit, approve, report
   const actions = $("head-actions"); actions.replaceChildren();
-  const sub = el("button", o ? "Submit again" : "Submit to the agent");
-  sub.onclick = async () => {
-    sub.disabled = true;
-    const res = await api.submit(p); show(res.data);
-    status(res.data.decision === "SIGNED" ? `Agent signed. Scheduled tx ${res.data.scheduledTxId}.` : `Agent refused: ${res.data.reason}`, res.data.decision === "SIGNED" ? "green" : "red");
-    await refreshList(); await select(id);
-  };
-  actions.append(sub);
-  if (large && check.matches) {
-    const ap = el("button", approval ? `World ID approved (${approval.source}), valid to ${new Date(approval.expiresAt).toLocaleTimeString()}` : world.configured ? "Approve with World ID" : "Approve (MOCKED demo)", "secondary");
+  const sub = el("button", o ? "Submit again" : "Submit to the agent", "btn btn-primary");
+  sub.onclick = () => withAction(sub, async () => {
+    const actionVersion = selectionVersion;
+    status("Checking the transfer…", "wait");
+    const res = await whileWorking($("workingBar"), () => api.submit(p));
+    show(res.data);
+    if (needKey(res)) return;
+    if (!res.ok) { requestError(res); return; }
+    status(...outcomeStatus(res.data));
+    await refreshAfterAction(id, actionVersion, { land: true });
+  });
+  if (pending) {
+    // In the challenge window the next step is to execute (after the window) or challenge.
+    const ex = el("button", "Execute", "btn btn-primary"); ex.id = "execute-btn"; ex.disabled = Boolean(challenge?.challenged);
+    ex.onclick = () => withAction(ex, async () => {
+      const actionVersion = selectionVersion;
+      const res = await whileWorking($("workingBar"), () => post(`/proposals/${encodeURIComponent(id)}/execute`)); show(res.data);
+      if (needKey(res)) return;
+      if (res.status === 425) status(`Challenge window: ${res.data.secondsRemaining} more second(s). Try Execute again after it closes.`, "wait");
+      else if (!res.ok) requestError(res);
+      else status(...outcomeStatus(res.data));
+      await refreshAfterAction(id, actionVersion, { land: res.ok });
+    });
+    const ch = el("button", challenge?.challenged ? "Resume (lift challenge)" : "Challenge", "btn"); ch.id = "challenge-btn";
+    ch.onclick = () => {
+      const reason = challenge?.challenged ? null : window.prompt("Why challenge this proposal?");
+      if (!challenge?.challenged && !reason) return;
+      return withAction(ch, async () => {
+        const actionVersion = selectionVersion;
+        const res = await post(`/proposals/${encodeURIComponent(id)}/challenge`, challenge?.challenged ? { resume: true } : { reason }); show(res.data);
+        if (needKey(res)) return;
+        if (!res.ok) requestError(res);
+        else status(res.data.state === "challenged" ? "Challenged: execution is paused." : "Challenge lifted.", "ok");
+        await refreshAfterAction(id, actionVersion);
+      });
+    };
+    actions.append(ex, ch);
+  } else if (voting) {
+    const cv = el("a", "Open the council vote", "btn btn-primary"); cv.href = "/council.html"; actions.append(cv);
+  } else if (decision !== "CANCELLED") actions.append(sub);
+  if (large && check.matches && !mandate) {
+    const ap = el("button", approval ? `World ID approved (${approval.source}), valid to ${new Date(approval.expiresAt).toLocaleTimeString()}` : world.configured ? "Approve with World ID" : "Approve (MOCKED demo)", "btn");
     ap.disabled = Boolean(approval) || (!world.configured && !world.mockedAllowed);
-    ap.onclick = async () => { ap.disabled = true; await approve(id); await select(id); };
+    ap.onclick = () => withAction(ap, async () => {
+      const actionVersion = selectionVersion;
+      placeFeedback($("head-actions"));
+      await approve(id);
+      await refreshAfterAction(id, actionVersion, { land: true });
+    });
     actions.append(ap);
   }
-  const rep = el("a", "Open report", "btn secondary"); rep.href = `/report.html?proposal=${encodeURIComponent(id)}`;
-  actions.append(rep);
+  const rep = el("a", "Open report", "btn"); rep.href = `/report.html?proposal=${encodeURIComponent(id)}`; actions.append(rep);
+  const ev = el("a", "Evidence bundle", "btn"); ev.href = `/proposals/${encodeURIComponent(id)}/evidence`; actions.append(ev);
 
-  // Record table and process strip
-  const rec = el("table", undefined, "rec");
-  const row = (k, v, cls, hash) => { const tr = rec.insertRow(); tr.append(th(k)); const td = tr.insertCell(); td.textContent = v; if (cls) td.className = cls; if (hash) td.classList.add("hash"); };
-  row("Requested", hbar(p.description.amountTinybars));
-  row("Described payee", p.description.payee);
-  row("Actual transfer", `${hbar(p.transfer.amountTinybars)} to ${p.transfer.payee}`, check.matches ? "" : "red");
-  row("Token", `${p.description.token} / ${p.transfer.token}`);
-  row("Transfer read from", o?.transferSource === "hedera-mirror-node" ? "Hedera mirror node (on-chain)" : "the request body");
-  row("Schedule", o?.scheduledTxId ?? p.scheduleId ?? "none yet", "", true);
-  row("Check payment", o?.paidTxId ? `${o.paidTxId} (${o.paidVia})` : "not paid yet", "", true);
-  row("0G verdict", o ? `${o.zeroGSource}${o.zeroGRequestId ? " · " + o.zeroGRequestId : ""}` : "none yet");
-  row("HCS audit", o?.auditTxId ?? "none yet", "", true);
-  row("World ID gate", o?.worldGateReason ?? (large ? "required for this size" : "not required"), o?.worldGateReason && decision === "REFUSED" ? "red" : "");
-  const sec1 = el("div", undefined, "sec"); sec1.append(el("h2", "Record"), rec);
-
-  const gate = !check.matches ? ["wait", "skipped", "Not reached: the check failed first, so the agent refuses whatever the owner approves."]
-    : !large ? ["pass", "n/a", "Below the large threshold, no World ID needed."]
-    : approval ? ["pass", "approved", `World ID approved (${approval.source}), single use.`]
-    : o?.worldGateReason ? ["fail", "blocked", o.worldGateReason] : ["wait", "pending", "A fresh World ID check for this exact proposal is required."];
-  const steps = el("div", undefined, "steps");
-  steps.append(
-    step(1, "Claim", "pass", "recorded", `${hbar(p.description.amountTinybars)} to ${p.description.payee}.`),
-    step(2, "Check", check.matches ? "pass" : "fail", check.matches ? "matches" : "mismatch", check.matches ? "Description and transfer agree." : check.mismatches.map((m) => `${m.field}: ${m.described} vs ${m.actual}`).join("; ")),
-    step(3, "Gate", gate[0], gate[1], gate[2]),
-    step(4, "Sign", decision === "SIGNED" ? "pass" : decision === "REFUSED" ? "fail" : "wait", decision ? decision.toLowerCase() : "pending", o ? (decision === "SIGNED" ? `Scheduled ${o.scheduledTxId}.` : "No signature added.") : "Waiting for the agent."),
+  $("recFolio").textContent = `${p.id}${o?.auditSeq ? ` · log entry #${o.auditSeq}` : ""}`;
+  const L = $("ledger"); L.replaceChildren(
+    ledgerRow("Requested", hbar(p.description.amountTinybars), "font-mono text-[13px]"),
+    ledgerRow("Described payee", p.description.payee, "font-mono text-[13px]"),
+    ledgerRow("Actual transfer", `${hbar(p.transfer.amountTinybars)} to ${p.transfer.payee}`, `font-mono text-[13px] ${check.matches ? "" : "text-danger"}`),
+    ledgerRow("Token (said / actual)", `${p.description.token} / ${p.transfer.token}`, `font-mono text-[11px] ${p.description.token === p.transfer.token ? "" : "text-danger"}`),
+    ...(mandate ? [ledgerRow("Standing instruction", mandateLine(mandate, vote), mandate.within ? "text-safe" : "text-signal")] : []),
+    ...(vote ? [ledgerRow("Council vote", (() => { const span = el("span", `${vote.yes} yes · ${vote.no} no · ${vote.needed} of ${vote.eligible.length} needed · ${vote.status === "open" ? "open" : vote.status} `); if (vote.status === "open") { const a = el("a", "vote", "text-signal"); a.href = "/council.html"; span.append(a); } return span; })())] : []),
   );
-  const sec2 = el("div", undefined, "sec"); sec2.dataset.proposal = id; sec2.dataset.decision = decision ?? "PENDING";
-  const h2 = el("h2", "Process"); h2.append(el("small", `claim → check → gate → sign`));
-  sec2.append(h2, steps);
-  box.replaceChildren(sec1, sec2);
-  await refreshList();
+  const T = $("technicalLedger"); T.replaceChildren(
+    ledgerRow("Decision reason", o?.reason ?? "No recorded decision."),
+    ledgerRow("Check result", check.verdict),
+    ledgerRow("Read from", o?.transferSource === "hedera-mirror-node" ? "Hedera mirror node (on-chain)" : "the request body (simulated)"),
+    ledgerRow("Check payment", o ? `paid via ${o.paidVia}` : "not paid yet"),
+    ledgerRow("0G verdict", o ? `${o.zeroGSource}${o.zeroGRequestId ? " · " + o.zeroGRequestId : ""}` : "none yet"),
+    ledgerRow("Gate", large ? "Large transfer · World ID required" : "Routine transfer · no World ID gate"),
+    ledgerRow("World ID", o?.worldGateReason ?? (large ? "required for this size" : "not required"), o?.worldGateReason && decision === "REFUSED" ? "text-danger" : ""),
+    ...(pending ? [ledgerRow("Challenge window", `${challenge?.challenged ? `challenged: ${challenge.reason}` : `open until ${until}`}; re-checked at execution`)] : []),
+    ...(decision === "CANCELLED" ? [ledgerRow("Cancelled", `seat revocation, epoch ${o.cancelledBy?.epoch ?? "?"}`, "text-danger")] : []),
+  );
+  const H = $("hashes"); H.replaceChildren(hashLine("Scheduled transaction", o?.scheduledTxId ?? p.scheduleId), hashLine("Check payment", o?.paidTxId), hashLine("HCS audit entry", o?.auditHash ? `#${o.auditSeq} ${o.auditHash}` : ""));
+
+  const matched = 3 - new Set(check.mismatches.map((m) => m.field === "amountTinybars" ? "amount" : m.field)).size;
+  const gate = !check.matches ? ["neutral", "skipped", "n/a", "not reached", "The check failed first, so the agent refuses whatever the owner approves."]
+    : voting ? ["warn", "council", "—", "vote open", `Outside standing instruction ${mandate?.id ?? ""}: ${(mandate?.violations ?? []).join("; ") || "the council decides"}.`]
+    : mandate?.within ? ["safe", "mandate", "1", "adopted rules", `Within standing instruction ${mandate.id}: the council-adopted rules are the approval.`]
+    : mandate && vote?.status === "passed" ? ["safe", "council", "1", "vote passed", `Council vote passed ${vote.yes} of ${vote.eligible.length}.`]
+    : !large ? ["safe", "clear", "n/a", "no gate", "Below the large threshold, no World ID needed."]
+    : approval ? ["safe", "approved", "1", "approved", `World ID approved (${approval.source}), single use.`]
+    : decision === "SIGNED" ? ["safe", "approved", "1", "approved", `${o.worldGateReason ?? "World ID approved"} The approval is spent.`]
+    : pending ? ["safe", "checked", "1", "passed", o?.worldGateReason ?? "World ID gate passed; execution re-checks approval."]
+    : decision === "REFUSED" && o?.worldGateReason ? ["danger", "blocked", "0", "blocked", o.worldGateReason] : ["warn", "pending", "—", "pending", "A fresh World ID check for this exact proposal is required."];
+  const pr = $("process"); pr.dataset.proposal = id; pr.dataset.decision = decision ?? "PENDING";
+  pr.replaceChildren(
+    stage("01", "Claim", "safe", "recorded", "1.00", "described", `${hbar(p.description.amountTinybars)} to ${p.description.payee}.`),
+    stage("02", "Check", check.matches ? "safe" : "danger", check.matches ? "clear" : "attention", `${(matched / 3).toFixed(2)}`, "fields matched", check.matches ? "Payee, amount and token agree with the description." : check.mismatches.map((m) => `${m.field}: ${m.described} vs ${m.actual}`).join("; ")),
+    stage("03", mandate ? "Instruction" : "World ID", gate[0], gate[1], gate[2], gate[3], gate[4]),
+    stage("04", "Signature", decision === "SIGNED" ? "safe" : decision === "REFUSED" || decision === "CANCELLED" ? "danger" : "warn", pending ? "window" : voting ? "vote" : decision === "CANCELLED" ? "cancelled" : "gate", decision === "SIGNED" ? "1" : decision === "REFUSED" || decision === "CANCELLED" ? "0" : "—", "hard gate", o ? (decision === "SIGNED" ? `Co-signed ${o.scheduledTxId}.` : pending ? `Not signed yet. Challenge window until ${until}; execution re-checks first.` : voting ? "Not signed. Waiting for the council vote." : "No signature added.") : "Waiting for the agent.", decision === "REFUSED" || decision === "CANCELLED"),
+  );
+
+  const S = $("said"); S.replaceChildren();
+  const l = el("div"); l.append(el("div", "The proposal said", "doc-folio"), (() => { const q = el("blockquote", `${hbar(p.description.amountTinybars)} to ${p.description.payee} for ${p.description.purpose}.`, "doc-quote mt-3 text-body"); return q; })(), el("span", check.matches ? "The description is consistent with the transfer." : "The description does not mention the difference below.", "doc-note mt-4 block max-w-[34ch]"));
+  const rr = el("div"); rr.append(el("div", "The transfer does", "doc-folio"), el("div", `${hbar(p.transfer.amountTinybars)}`, `mt-3 font-mono text-[14px] ${check.matches ? "text-body" : "text-danger"}`), el("p", `to ${p.transfer.payee}`, "mt-1 text-[15px] leading-snug text-body"));
+  const tb = el("table", undefined, "doc-ledger mt-4"); const tbd = document.createElement("tbody");
+  tbd.append(ledgerRow("Field", "described / actual")); tb.append(tbd);
+  for (const [f, d, a] of [["Payee", p.description.payee, p.transfer.payee], ["Amount", String(p.description.amountTinybars), String(p.transfer.amountTinybars)], ["Token", p.description.token, p.transfer.token]]) tbd.append(ledgerRow(f, `${d} / ${a}`, d === a ? "font-mono text-[11px]" : "font-mono text-[11px] text-danger"));
+  rr.append(tb); S.append(l, rr);
+  renderFlow({ decision, check, large, approval, o }, false);
+  try { await refreshList(); }
+  catch {
+    if (version === selectionVersion) status("Record loaded. Could not refresh the proposal list; select again to retry.", "bad");
+  }
+}
+
+function renderFlow({ decision, check, large, approval, o }, animate) {
+  const pending = decision === "PENDING_CHALLENGE";
+  const voting = decision === "PENDING_VOTE";
+  const gateState = !check.matches ? ["wait", "skipped"] : voting ? ["wait", "council vote"]
+    : o?.mandate?.within ? ["pass", `within ${o.mandate.id}`] : o?.mandate && o?.vote?.status === "passed" ? ["pass", "council passed"]
+    : !large ? ["pass", "not required"]
+    : o?.worldGateReason && decision === "REFUSED" ? ["fail", "blocked"]
+    : approval || decision === "SIGNED" || pending ? ["pass", "approved"] : ["wait", "pending"];
+  const nodes = [
+    ["pass", "Claim", "described"],
+    [check.matches ? "pass" : "fail", "Check", check.matches ? "matches" : "mismatch"],
+    [gateState[0], o?.mandate ? "Instruction" : "World ID", gateState[1]],
+    [decision === "SIGNED" ? "pass" : decision === "REFUSED" || decision === "CANCELLED" ? "fail" : "wait", "Signature", decision === "SIGNED" ? "signed" : decision === "REFUSED" ? "refused" : decision === "CANCELLED" ? "cancelled" : pending ? "challenge window" : voting ? "waiting for the council" : "waiting"],
+  ];
+  const flow = $("flow");
+  flow.dataset.static = String(!animate || reduced());
+  const line = el("div", undefined, "line"); line.append(el("span", undefined, "fill"), el("span", undefined, "packet"));
+  flow.querySelector(".line").replaceWith(line);
+  $("flowNodes").replaceChildren(...nodes.map(([state, name, sub]) => {
+    const node = el("div", undefined, `node ${state}`);
+    node.append(el("i"), el("b", name), el("span", sub)); return node;
+  }));
+  $("flowCap").textContent = decision === "SIGNED" ? "reached the signature" : decision === "REFUSED" ? `stopped at ${!check.matches ? "the check" : "the gate"}` : decision === "CANCELLED" ? "cancelled by a seat revocation" : pending ? "waiting out the challenge window" : voting ? "waiting for the council vote" : "not yet decided";
+  const stop = decision === "SIGNED" || decision === "CANCELLED" || pending ? 3 : voting ? 2 : decision === "REFUSED" ? (!check.matches ? 1 : 2) : 0;
+  const end = decision === "SIGNED" ? "pass" : pending || voting || !decision ? "wait" : "fail";
+  if (animate && !reduced()) {
+    runFlow(flow, { stop, ok: decision === "SIGNED" });
+    flow.dataset.end = end;
+    return;
+  }
+  flow.dataset.end = end;
+  const pct = `${(stop / 3) * 100}%`;
+  const fill = flow.querySelector(".fill"), packet = flow.querySelector(".packet");
+  fill.style.transition = packet.style.transition = "none";
+  fill.style.width = pct; packet.style.left = pct;
+  [...flow.querySelectorAll(".node")].forEach((node, index) => node.classList.toggle("lit", index <= stop));
+}
+
+// Replay only the stored decision; World ID activity never changes this record.
+function replayDecision() {
+  if (!selectedRecord?.lastOutcome) return;
+  journey.replay();
+  document.body.dataset.replays = String(Number(document.body.dataset.replays ?? 0) + 1);
+}
+window.__replay = replayDecision;
+
+function enterConsole() {
+  entered = true;
+  if (reduced()) return;
+  replay(document.querySelector(".app-rail"), "m-reveal", 0);
+  replay(document.querySelector(".app-rail-r"), "m-reveal", 0.06);
+  if (!$("selected").hidden) {
+    stagger([$("alert"), $("recordSection")], 0.12, 0.1);
+    stagger([$("journeySection")], 0.32, 0.08);
+  } else {
+    stagger([$("alert"), document.querySelector(".doc-body > header")], 0.12, 0.1);
+  }
+  stagger([$("new"), $("proposals"), $("join")], 0.52, 0.08);
 }
 
 async function approve(proposalId) {
-  const res = world.configured
-    ? await runWorldFlow({ proposalId, onQr: (_u, svg) => { const i = el("img"); i.src = svg; i.alt = "Scan with World App"; $("qr").replaceChildren(i); }, onStatus: status })
-    : await runMockedFlow({ proposalId });
-  $("qr").replaceChildren();
-  status(res.ok ? `Approved${res.data.source === "mocked" ? " (MOCKED, demo only)" : " with World ID"}. Single use, 5 minutes.` : res.data.error, res.ok ? "green" : "red");
+  status(world.configured ? "Preparing World ID…" : "Recording MOCKED approval…", "wait");
+  journey.setActivity("working");
+  try {
+    const res = world.configured
+      ? await runWorldFlow({ proposalId, onQr: (_u, svg) => { const i = el("img"); i.src = svg; i.alt = "Scan with World App"; i.className = "my-3 h-56 w-56 bg-white p-2"; $("qr").replaceChildren(i); }, onStatus: (text) => status(text, "wait") })
+      : await runMockedFlow({ proposalId });
+    if (res.ok) status(`Approved${res.data.source === "mocked" ? " (MOCKED, demo only)" : " with World ID"}. Single use, 5 minutes.`, "ok");
+    else requestError(res);
+  } catch (error) {
+    restoreJourney();
+    throw error;
+  } finally {
+    $("qr").replaceChildren(); $("qr").removeAttribute("data-state");
+  }
 }
 
-$("new-form").onsubmit = async (e) => {
+$("new-form").onsubmit = (e) => {
   e.preventDefault();
-  const f = Object.fromEntries(new FormData(e.target));
-  const proposal = {
-    id: f.id,
-    description: { payee: f.payee, amountTinybars: toTiny(f.amount), token: "HBAR", purpose: f.purpose },
-    transfer: { payee: f.tpayee, amountTinybars: toTiny(f.tamount), token: "HBAR" },
-  };
-  const res = await api.submit(proposal);
-  if (res.status >= 400) { status(res.data.error, "red"); return; }
-  show(res.data);
-  status(res.data.decision === "SIGNED" ? `Agent signed. Scheduled tx ${res.data.scheduledTxId}.` : `Agent refused: ${res.data.reason}`, res.data.decision === "SIGNED" ? "green" : "red");
-  await select(proposal.id);
-  $("new-form").elements.id.value = `P-${Date.now().toString(36).toUpperCase()}`;
+  const button = e.submitter ?? e.target.querySelector("button[type=submit]");
+  return withAction(button, async () => {
+    const actionVersion = selectionVersion;
+    const f = Object.fromEntries(new FormData(e.target));
+    const proposal = { id: f.id, description: { payee: f.payee, amountTinybars: toTiny(f.amount), token: "HBAR", purpose: f.purpose }, transfer: { payee: f.tpayee, amountTinybars: toTiny(f.tamount), token: "HBAR" } };
+    status("Checking the transfer…", "wait");
+    const res = await whileWorking($("workingBar"), () => api.submit(proposal));
+    show(res.data);
+    if (needKey(res)) return;
+    if (!res.ok) { requestError(res); return; }
+    status(...outcomeStatus(res.data));
+    if (actionVersion === selectionVersion) await select(proposal.id, { land: true });
+    else await refreshList();
+    $("new-form").elements.id.value = `P-${Date.now().toString(36).toUpperCase()}`;
+  });
 };
 $("new-form").elements.id.value = `P-${Date.now().toString(36).toUpperCase()}`;
 
-$("join-btn").onclick = async () => {
-  $("join-btn").disabled = true;
-  const res = world.configured
-    ? await runWorldFlow({ join: true, onQr: (_u, svg) => { const i = el("img"); i.src = svg; $("qr").replaceChildren(i); }, onStatus: status })
-    : world.mockedAllowed ? await runMockedFlow({ join: true }) : { ok: false, data: { error: "World ID is not configured here." } };
-  $("qr").replaceChildren();
-  status(res.ok ? `Joined: ${res.data.seat} (${res.data.proof}).` : res.data.error, res.ok ? "green" : "red");
-  $("join-btn").disabled = false; await refreshSeats();
-};
-
+$("join-btn").onclick = () => withAction($("join-btn"), async () => {
+  placeFeedback($("join"));
+  status(world.configured ? "Preparing World ID…" : world.mockedAllowed ? "Recording MOCKED council proof…" : "Checking World ID configuration…", "wait");
+  journey.setActivity("working");
+  try {
+    const res = world.configured
+      ? await runWorldFlow({ join: true, onQr: (_u, svg) => { const i = el("img"); i.src = svg; i.alt = "Scan with World App"; i.className = "my-3 h-56 w-56 bg-white p-2"; $("qr").replaceChildren(i); }, onStatus: (text) => status(text, "wait") })
+      : world.mockedAllowed ? await runMockedFlow({ join: true }) : { ok: false, data: { error: "World ID is not configured here." } };
+    if (res.ok) status(`Joined: ${res.data.seat} (${res.data.proof}).`, "ok");
+    else requestError(res);
+    await refreshSeats();
+  } finally {
+    $("qr").replaceChildren(); $("qr").removeAttribute("data-state");
+    restoreJourney();
+  }
+});
 bus.addEventListener("proposal:decision", (e) => { document.body.dataset.decision = e.detail.outcome.decision; });
+["world:qr", "world:waiting", "world:approved", "world:denied", "council:joined"].forEach((name) => bus.addEventListener(name, () => {
+  const state = name === "world:waiting" || name === "world:qr" ? "waiting" : name === "world:denied" ? "denied" : "approved";
+  document.body.dataset.world = state;
+  journey.setActivity(state);
+  if (name === "world:qr" || name === "world:waiting") $("qr").dataset.state = "waiting";
+}));
 
-health = (await api.health()).data;
-const chip = (t) => el("span", t, "chip");
-$("chips").replaceChildren(chip(`${health.mode} · ${health.network}`), chip(`World ${health.world.startsWith("real") ? "real" : "mocked"}`), chip(`0G ${health.zeroG}`));
-$("meta").replaceChildren(el("div", "No proposal open"), el("div", health.mode === "real" ? "Real mode" : "SIMULATED", "tagbox"));
-world = (await api.worldConfig()).data;
-mountCompanion({ decisionHost: document.body });
-await Promise.all([refreshList(), refreshSeats()]);
-if (selected) await select(selected);
-if (location.hash === "#join") $("join").scrollIntoView();
-document.body.dataset.state = "ready";
+try {
+  health = (await api.health()).data;
+  const ver = await fetch("/audit/verify").then((r) => r.json()).catch(() => ({}));
+  const pol = await fetch("/policy").then((r) => r.json()).catch(() => ({}));
+  const logLine = ver.ok ? `log verified, ${ver.checked} entries` : ver.checked === 0 ? "log empty" : typeof ver.checked === "number" ? "log BROKEN" : "log unavailable";
+  $("railMode").textContent = `${health.mode}, ${health.network}`;
+  $("chainTag").textContent = `${health.mode}, ${health.network}`;
+  $("mStamp").textContent = health.mode === "real" ? "Real mode" : "Simulated";
+  $("footLeft").textContent = `Council Agent, Mumbai 2026, policy ${pol.hash ? pol.hash.slice(0, 12) + "…" : "n/a"}`;
+  $("footRight").textContent = `${logLine}, check ${health.checkPrice}, World ${health.world.startsWith("real") ? "real" : "mocked"}, 0G ${health.zeroG}`;
+  world = (await api.worldConfig()).data;
+  await Promise.all([refreshList(), refreshSeats()]);
+  if (selected) await select(selected);
+} catch {
+  status("Could not load console data. Reload to retry.", "bad");
+} finally {
+  if (location.hash === "#join") $("join").scrollIntoView();
+  document.body.dataset.state = "ready";
+  enterConsole();
+}
+initJudge({
+  api, whileWorking, reduced, refreshList, status,
+  select: async (...args) => { await select(...args); $("processSection").open = true; },
+  approve: async (id) => { world = (await api.worldConfig()).data; await approve(id); },
+  setHealth: () => health,
+});
 </script>
 </body></html>
