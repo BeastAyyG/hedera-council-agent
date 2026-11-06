@@ -146,7 +146,7 @@ Demo video: 2-3 minutes. ETHGlobal requires 2-4 minutes, 0G wants under
    sign; the README section below holds the real transaction ID and
    HashScan link once a real payment settles.
 2. **Hedera, "No Solidity Allowed": Build with Hedera SDKs, $2,000.**
-   Proves it: Hedera JS/TS SDK (`@hashgraph/sdk`), no Solidity anywhere
+   Proves it: Hedera JS/TS SDK (`@hiero-ledger/sdk`), no Solidity anywhere
    in this repo. Uses HTS transfers, HCS topics, and Scheduled
    Transactions, three native services (`src/hedera.ts`).
 3. **World, World ID Agent Pass, $5,000.**
