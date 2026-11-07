@@ -167,6 +167,25 @@ interface RegisteredProposal {
   voteEpoch?: number;
 }
 
+export interface DemoSeedProposal {
+  id: string;
+  decision: string;
+}
+
+export interface DemoSeedReport {
+  seeded: boolean;
+  reason?: string;
+  mandate?: string;
+  seats?: number;
+  proposals?: DemoSeedProposal[];
+}
+
+export type SeedDemoStateFn = () => Promise<DemoSeedReport>;
+
+// The app createApp returns: plain Express plus the demo seed, attached but
+// never called by createApp itself (tests assert on fresh state).
+export type SeededApp = Express & { seedDemoState: SeedDemoStateFn };
+
 export interface AppOptions {
   env?: NodeJS.ProcessEnv;
   // null keeps seats and spent approvals in memory (tests).
@@ -182,7 +201,7 @@ export interface AppOptions {
   zeroGFetch?: typeof fetch;
 }
 
-export async function createApp(options: AppOptions = {}): Promise<Express> {
+export async function createApp(options: AppOptions = {}): Promise<SeededApp> {
   const env = options.env ?? process.env;
   const clock = options.now ?? (() => new Date());
   const built = buildAgent(env, options.port);
@@ -1476,12 +1495,204 @@ export async function createApp(options: AppOptions = {}): Promise<Express> {
     res.status(status).json({ error: status === 500 ? "Internal error" : String((err as Error).message) });
   });
 
-  return app;
+  // ---- demo-data seed (PR #12) ----
+  // Live demo instances start empty: the Report shows "NO PROPOSAL RECORD IS
+  // AVAILABLE" and Atlas says "No logged proposals". The seed runs the real
+  // code paths (processProposal, compileMandate, castBallot, resolveVote,
+  // auditEntry) once at server startup in demo mode, so every fresh
+  // serverless instance starts with the judged story: a World ID-approved
+  // large payment, an adopted standing instruction, a payment inside it, a
+  // refused mismatch, and a payment outside it that the council votes
+  // through. The World ID payment (P-104) runs BEFORE the mandate is
+  // adopted: once M-1 is active a large payment inside it skips the World
+  // ID gate entirely, and one outside it goes to a vote instead.
+  // Gates: demo mode only (agent.runMode === "demo") and never under
+  // REAL_ONLY=1. createApp only attaches this function; it never calls it.
+  const seedDemoState: SeedDemoStateFn = async () => {
+    if (agent.runMode !== "demo" || realOnly) {
+      return { seeded: false, reason: agent.runMode !== "demo" ? `not demo mode (runMode: ${agent.runMode})` : "REAL_ONLY=1" };
+    }
+    if (store.seats().length > 0 || store.mandates().length > 0) {
+      return { seeded: false, reason: "already seeded" };
+    }
+    const seedProposal = (id: string, payee: string, amountTinybars: number, purpose: string, transfer?: { payee: string; amountTinybars: number }): Proposal => ({
+      id,
+      description: { payee, amountTinybars, token: "HBAR", purpose },
+      transfer: { payee: transfer?.payee ?? payee, amountTinybars: transfer?.amountTinybars ?? amountTinybars, token: "HBAR" },
+      createdAt: clock().toISOString(),
+    });
+    const registerProposal = (proposal: Proposal, outcome: CouncilOutcome): RegisteredProposal => {
+      const entry: RegisteredProposal = { proposal: outcome.proposal, fingerprint: proposalFingerprint(proposal), lastOutcome: outcome, pending: null };
+      proposals.set(proposal.id, entry);
+      return entry;
+    };
+    // Mirror of POST /proposals when a mandate is active: decide inside
+    // serialized() (monthly-spend reads run one at a time) and record spend.
+    const decideInside = async (proposal: Proposal) =>
+      serialized(async () => {
+        const o = await processProposal(agent, proposal, null, mandateCtx());
+        recordIfSigned(o);
+        return o;
+      });
+
+    // 2. Seats: same as demo.ts scene 9.
+    const seats = ["asha", "bilal", "chen"].map((n) => store.addSeat(`mock:demo-${n}`, "mocked")!);
+    const seatIds = seats.map((s) => s.seat);
+
+    // 3. P-104, large payment with a World ID approval, SIGNED. No mandate
+    // active yet, so the gate applies and the mocked approval carries it.
+    const p104 = seedProposal("P-104", "0.0.1001", 80_000_000, "Pay the main sponsor grant");
+    const o104 = await processProposal(agent, p104, mockedWorldCheck("P-104", "approved"), null);
+    if (o104.decision !== "SIGNED" || !o104.usedWorldApproval) {
+      throw new Error(`Demo seed failed at P-104: expected SIGNED with a World ID approval, got ${o104.decision} (${o104.reason})`);
+    }
+    recordIfSigned(o104);
+    registerProposal(p104, o104);
+
+    // 4. Mandate M-1: forced-simulated compile, adoption by 2 of 3 seats.
+    const mandateText = "Pay 0.0.1001 or 0.0.1002 up to 50 HBAR each, at most 100 HBAR a month. Anything else goes to the council.";
+    const compiled = await compileMandate(mandateText, { ...agent.zeroG, apiKey: "" });
+    if (!compiled.ok) throw new Error(`Demo seed failed at M-1: mandate did not compile: ${compiled.error}`);
+    const draft = store.addMandate({
+      text: mandateText,
+      rules: compiled.rules,
+      summary: summarize(compiled.rules),
+      source: compiled.source,
+      requestId: compiled.requestId,
+      model: compiled.model,
+      rulesHash: rulesHash(compiled.rules),
+      textHash: sha256(mandateText),
+      createdAt: clock().toISOString(),
+      status: "open",
+      vote: openTally(seatIds),
+    });
+    await auditNote(
+      draft.id,
+      "MANDATE_PROPOSED",
+      `Standing instruction ${draft.id} proposed, compiled by ${draft.source === "0g" ? `0G (request ${draft.requestId ?? "none"})` : "the SIMULATED parser"}. Council vote opened: ${draft.vote.needed} of ${seatIds.length} needed.`,
+      undefined,
+      { rulesHash: draft.rulesHash, textHash: draft.textHash, ...(draft.requestId ? { zeroGRequestId: draft.requestId.slice(0, 80) } : {}) },
+    );
+    // Mirror of POST /mandate/:id/vote.
+    for (const seat of seatIds.slice(0, 2)) {
+      const m = store.mandate(draft.id)!;
+      const cast = castBallot(m.vote, { seat, choice: "yes", at: clock().toISOString(), source: "mocked" }, draft.id);
+      if (!cast.ok) throw new Error(`Demo seed failed at ${draft.id}: ballot refused: ${cast.error}`);
+      const vote = cast.tally;
+      let superseded: MandateDraft | null = null;
+      if (vote.status === "passed") {
+        store.updateMandate({ ...m, vote });
+        superseded = store.adoptMandate(draft.id, clock().toISOString())!.superseded;
+      } else if (vote.status === "failed") {
+        store.updateMandate({ ...m, vote, status: "rejected", closedReason: "The council voted it down." });
+      } else store.updateMandate({ ...m, vote });
+      await auditNote(draft.id, "VOTE", ballotDetail(seat, "yes", draft.id, vote), undefined, { rulesHash: m.rulesHash });
+      if (vote.status === "passed") {
+        const logged = await auditNote(
+          draft.id,
+          "MANDATE_ADOPTED",
+          `Standing instruction ${draft.id} adopted by the council (${vote.yes} of ${vote.eligible.length}, ${vote.needed} needed)${superseded ? `, supersedes ${superseded.id}` : ""}. ${m.summary.join(". ")}.`,
+          undefined,
+          { rulesHash: m.rulesHash, textHash: m.textHash },
+        );
+        const adopted = store.mandate(draft.id)!;
+        store.updateMandate({ ...adopted, adoptedAudit: { auditSeq: logged.auditSeq, auditHash: logged.auditHash, auditTxId: logged.auditTxId } });
+      } else if (vote.status === "failed") {
+        await auditNote(draft.id, "MANDATE_REJECTED", `Standing instruction ${draft.id} rejected by the council (${vote.no} no of ${vote.eligible.length}).`, undefined, { rulesHash: m.rulesHash });
+      }
+    }
+    const adopted = store.mandate(draft.id)!;
+    if (adopted.status !== "adopted" || !adopted.rulesHash) throw new Error(`Demo seed failed at M-1: expected an adopted mandate, got status ${adopted.status}`);
+
+    // 5. P-101, inside the rules, SIGNED: no vote, no World ID check.
+    // Spend so far: 0.8 + 50 = 50.8 HBAR this month, under the 100 HBAR cap.
+    const p101 = seedProposal("P-101", "0.0.1001", 5_000_000_000, "Pay the venue balance");
+    const o101 = await decideInside(p101);
+    recordIfSigned(o101);
+    if (o101.decision !== "SIGNED" || o101.mandate?.within !== true || o101.usedWorldApproval) {
+      throw new Error(`Demo seed failed at P-101: expected SIGNED inside the mandate with no World ID check, got ${o101.decision} (within: ${o101.mandate?.within}, usedWorldApproval: ${o101.usedWorldApproval})`);
+    }
+    registerProposal(p101, o101);
+
+    // 6. P-102, mismatch, REFUSED: description and transfer disagree.
+    const p102 = seedProposal("P-102", "0.0.1002", 2_000_000_000, "Pay the caterer", { payee: "0.0.9999", amountTinybars: 9_000_000_000 });
+    const o102 = await decideInside(p102);
+    recordIfSigned(o102);
+    if (o102.decision !== "REFUSED" || o102.checkMatches !== false || !o102.paidTxId) {
+      throw new Error(`Demo seed failed at P-102: expected REFUSED with checkMatches false and a paid check, got ${o102.decision} (matches: ${o102.checkMatches}, paidTxId: ${o102.paidTxId ?? "none"})`);
+    }
+    registerProposal(p102, o102);
+
+    // 7. P-103, outside the rules (0.0.1003 is not an allowed payee), council
+    // vote then SIGNED with no second check fee.
+    const p103 = seedProposal("P-103", "0.0.1003", 3_000_000_000, "Pay the new AV vendor");
+    const o103 = await decideInside(p103);
+    recordIfSigned(o103);
+    if (o103.decision !== "PENDING_VOTE" || !o103.vote) {
+      throw new Error(`Demo seed failed at P-103: expected PENDING_VOTE, got ${o103.decision} (${o103.reason})`);
+    }
+    const entry103 = registerProposal(p103, o103);
+    entry103.voteEpoch = store.epoch();
+    store.putVote({
+      subject: p103.id,
+      kind: "proposal",
+      title: p103.description.purpose,
+      amountTinybars: p103.transfer.amountTinybars,
+      payee: p103.transfer.payee,
+      violations: o103.mandate?.violations ?? [],
+      vote: o103.vote,
+      decision: "PENDING_VOTE",
+      openedAt: clock().toISOString(),
+    });
+    // Mirror of POST /proposals/:id/vote (closing flow).
+    let o103final = o103;
+    for (const seat of seatIds.slice(0, 2)) {
+      const item = store.vote("P-103")!;
+      const cast = castBallot(item.vote, { seat, choice: "yes", at: clock().toISOString(), source: "mocked" }, "P-103");
+      if (!cast.ok) throw new Error(`Demo seed failed at P-103: ballot refused: ${cast.error}`);
+      const vote = cast.tally;
+      store.putVote({ ...item, vote });
+      entry103.lastOutcome = { ...entry103.lastOutcome!, vote };
+      await auditNote("P-103", "VOTE", ballotDetail(seat, "yes", "P-103", vote), entry103.proposal);
+      if (vote.status === "open") continue;
+      const resolved = await resolveVote(agent, entry103.lastOutcome!, vote, { createdEpoch: entry103.voteEpoch ?? store.epoch(), currentEpoch: store.epoch() });
+      recordIfSigned(resolved);
+      entry103.proposal = resolved.proposal;
+      entry103.lastOutcome = resolved;
+      entry103.pending = null;
+      store.putVote({ ...store.vote("P-103")!, vote, decision: resolved.decision });
+      o103final = resolved;
+    }
+    if (o103final.decision !== "SIGNED") throw new Error(`Demo seed failed at P-103: expected SIGNED after the vote, got ${o103final.decision} (${o103final.reason})`);
+    if (o103final.paidTxId !== o103.paidTxId) throw new Error("Demo seed failed at P-103: vote resolution paid a second check fee");
+
+    return {
+      seeded: true,
+      mandate: draft.id,
+      seats: seats.length,
+      proposals: [
+        { id: "P-104", decision: o104.decision },
+        { id: "P-101", decision: o101.decision },
+        { id: "P-102", decision: o102.decision },
+        { id: "P-103", decision: o103final.decision },
+      ],
+    };
+  };
+  const seededApp = app as SeededApp;
+  seededApp.seedDemoState = seedDemoState;
+
+  return seededApp;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const port = Number(process.env.PORT ?? 3000);
   const app = await createApp({ port });
+  // Demo mode only: seed the judged story at startup, so a fresh instance
+  // never starts empty. The seed itself gates on demo mode and REAL_ONLY=1.
+  if ((process.env.DEMO_MODE ?? "").trim() === "1") {
+    const seed = await app.seedDemoState();
+    console.log(seed.seeded ? `demo seed: ${seed.proposals?.length ?? 0} proposals, mandate ${seed.mandate}, ${seed.seats} seats` : `demo seed skipped (${seed.reason})`);
+  }
   app.listen(port, () => {
     console.log(`hedera-council-agent listening on :${port}`);
   });
