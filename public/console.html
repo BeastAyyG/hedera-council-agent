@@ -132,6 +132,7 @@
   </header>
 
   <main class="app-main">
+    <div id="flowProgress"></div>
     <div class="doc-page">
       <aside class="doc-margin">
         <div class="doc-folio" id="mRecord">Record 00</div>
@@ -232,6 +233,9 @@
     </div>
   </main>
 
+  <div class="ticker" aria-hidden="true">
+    <div class="ticker-track"><span id="tickA"></span><span id="tickB"></span></div>
+  </div>
   <footer class="app-footer">
     <div class="app-footer-inner">
       <p id="footLeft">Council Agent, Mumbai 2026</p>
@@ -239,12 +243,15 @@
     </div>
   </footer>
 </div>
+<script src="/assets/ticker.js" defer></script>
 <script src="/vendor/idkit.js"></script>
+<script src="/assets/real-only.js"></script>
 <script type="module">
-import { api, bus, hbar, qs } from "/assets/api.js";
+import { api, bus, hbar, qs, showSetupBanner } from "/assets/api.js";
 import { runWorldFlow, runMockedFlow } from "/assets/world-flow.js";
 import { joinCouncil } from "/assets/council-votes.js";
 import { replay, stagger, whileWorking as animateWorking, reduced, runFlow } from "/assets/motion.js";
+import { mountFlowProgress } from "/assets/flow-progress.js";
 import { initJudge } from "/assets/judge.js";
 import { mountJourney, renderTransfer } from "/assets/council-scene.js";
 import { mountCompanion } from "/assets/scroll-companion.js";
@@ -309,6 +316,8 @@ let world = { configured: false, mockedAllowed: false };
 let health = {};
 let selected = qs("proposal");
 let rowsCache = [];
+let prevRowIds = new Set();
+const lastDecision = new Map(); // proposal id -> last decision this browser saw, so a landing decision animates once
 let entered = false;
 let selectedRecord = null;
 let selectionVersion = 0;
@@ -368,7 +377,8 @@ async function refreshList() {
   const t = el("table", undefined, "doc-ledger"); const tb = document.createElement("tbody");
   for (const p of rows) {
     const tr = document.createElement("tr"); tr.dataset.proposal = p.id; tr.dataset.decision = p.decision ?? "PENDING"; tr.dataset.selected = String(p.id === selected);
-    tr.className = `cursor-pointer hover:bg-panel ${p.id === selected ? "bg-panel" : ""}`;
+    if (!prevRowIds.has(p.id) && !reduced()) tr.classList.add("cv-row-new");
+    tr.className += ` cursor-pointer hover:bg-panel ${p.id === selected ? "bg-panel" : ""}`;
     const a = document.createElement("td"); a.className = "font-mono"; a.textContent = `${p.id}${p.large ? " · large" : ""}`;
     const b = document.createElement("td"); b.textContent = `${p.purpose} · ${hbar(p.amountTinybars)}`;
     const c = document.createElement("td"); c.append(pill(p.matches ? "safe" : "danger", p.matches ? "matches" : "mismatch"));
@@ -381,6 +391,7 @@ async function refreshList() {
     tr.onkeydown = (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(p.id); } };
     tb.append(tr);
   }
+  prevRowIds = new Set(rows.map((p) => p.id));
   t.append(tb); box.append(t);
 }
 
@@ -416,6 +427,8 @@ async function select(id, { land = false } = {}) {
   selectedRecord = r.data;
   const { proposal: p, check, lastOutcome: o, large, approval, challenge } = r.data;
   const decision = o?.decision ?? null;
+  const prevDecision = lastDecision.get(id);
+  const decidedNow = land && decision && ["SIGNED", "REFUSED", "CANCELLED"].includes(decision) && prevDecision !== decision;
   const pending = decision === "PENDING_CHALLENGE";
   const voting = decision === "PENDING_VOTE";
   const mandate = o?.mandate ?? null;
@@ -431,7 +444,7 @@ async function select(id, { land = false } = {}) {
   $("mRecord").textContent = `Record ${String(idx + 1 || rowsCache.length + 1).padStart(2, "0")}`;
   $("mId").textContent = p.id; $("mDate").textContent = new Date(p.createdAt).toLocaleDateString();
   $("mNotes").replaceChildren(...[decision === "SIGNED" ? "Agent signed" : decision === "REFUSED" ? "Agent refused" : pending ? (challenge?.challenged ? "Challenged, execution paused" : "Waiting out the challenge window") : voting ? "Waiting for the council" : decision === "CANCELLED" ? "Cancelled by a seat revocation" : "Awaiting the agent", check.matches ? "Check passed" : "Check failed", mandate ? (mandate.within ? `Within ${mandate.id}` : `Outside ${mandate.id}`) : large ? "Large: World ID gate" : "Routine"].map((t, i) => el("div", t, `doc-note ${i ? "mt-1" : ""}`)));
-  const stamp = $("mStamp"); stamp.textContent = decision ? LABEL[decision] ?? decision.toLowerCase() : health.mode === "real" ? "Real mode" : "Simulated"; const stampTone = decision === "SIGNED" ? "var(--color-safe)" : pending || voting ? "var(--color-signal)" : ""; stamp.style.color = stampTone; stamp.style.borderColor = stampTone;
+  const stamp = $("mStamp"); stamp.textContent = decision ? LABEL[decision] ?? decision.toLowerCase() : health.mode === "real" ? "Real mode" : health.mode === "setup-required" ? "Setup required" : "Simulated"; const stampTone = decision === "SIGNED" ? "var(--color-safe)" : pending || voting ? "var(--color-signal)" : ""; stamp.style.color = stampTone; stamp.style.borderColor = stampTone;
 
   const al = $("alert"); al.className = `border-l-2 ${decision === "SIGNED" ? "border-safe" : pending || voting ? "border-signal" : "border-danger"} text-[12px] leading-relaxed text-dim`;
   al.dataset.decision = decision ?? "PENDING";
@@ -485,7 +498,7 @@ async function select(id, { land = false } = {}) {
     const cv = el("a", "Open the council vote", "btn btn-primary"); cv.href = "/council.html"; actions.append(cv);
   } else if (decision !== "CANCELLED") actions.append(sub);
   if (large && check.matches && !mandate) {
-    const ap = el("button", approval ? `World ID approved (${approval.source}), valid to ${new Date(approval.expiresAt).toLocaleTimeString()}` : world.configured ? "Approve with World ID" : "Approve (MOCKED demo)", "btn");
+    const ap = el("button", approval ? `World ID approved (${approval.source}), valid to ${new Date(approval.expiresAt).toLocaleTimeString()}` : world.configured || !world.mockedAllowed ? "Approve with World ID" : "Approve (MOCKED demo)", "btn");
     ap.disabled = Boolean(approval) || (!world.configured && !world.mockedAllowed);
     ap.onclick = () => withAction(ap, async () => {
       const actionVersion = selectionVersion;
@@ -545,7 +558,14 @@ async function select(id, { land = false } = {}) {
   tbd.append(ledgerRow("Field", "described / actual")); tb.append(tbd);
   for (const [f, d, a] of [["Payee", p.description.payee, p.transfer.payee], ["Amount", String(p.description.amountTinybars), String(p.transfer.amountTinybars)], ["Token", p.description.token, p.transfer.token]]) tbd.append(ledgerRow(f, `${d} / ${a}`, d === a ? "font-mono text-[11px]" : "font-mono text-[11px] text-danger"));
   rr.append(tb); S.append(l, rr);
-  renderFlow({ decision, check, large, approval, o }, false);
+  renderFlow({ decision, check, large, approval, o }, decidedNow);
+  // A decision that lands after an action replays the packet to the final
+  // node and slams the stamp; a decision that was already there stays still.
+  if (decidedNow && !reduced()) {
+    replay($("mStamp"), "m-slam", 0);
+    replay($("alert"), decision === "SIGNED" ? "m-flash-green" : "m-flash-red", 0);
+  }
+  lastDecision.set(id, decision);
   try { await refreshList(); }
   catch {
     if (version === selectionVersion) status("Record loaded. Could not refresh the proposal list; select again to retry.", "bad");
@@ -689,11 +709,13 @@ try {
   const logLine = ver.ok ? `log verified, ${ver.checked} entries` : ver.checked === 0 ? "log empty" : typeof ver.checked === "number" ? "log BROKEN" : "log unavailable";
   $("railMode").textContent = `${health.mode}, ${health.network}`;
   $("chainTag").textContent = `${health.mode}, ${health.network}`;
-  $("mStamp").textContent = health.mode === "real" ? "Real mode" : "Simulated";
+  $("mStamp").textContent = health.mode === "real" ? "Real mode" : health.mode === "setup-required" ? "Setup required" : "Simulated";
+  showSetupBanner(health);
   $("footLeft").textContent = `Council Agent, Mumbai 2026, policy ${pol.hash ? pol.hash.slice(0, 12) + "…" : "n/a"}`;
   $("footRight").textContent = `${logLine}, check ${health.checkPrice}, World ${health.world.startsWith("real") ? "real" : "mocked"}, 0G ${health.zeroG}`;
   world = (await api.worldConfig()).data;
   await Promise.all([refreshList(), refreshSeats()]);
+  mountFlowProgress();
   if (selected) await select(selected);
 } catch {
   status("Could not load console data. Reload to retry.", "bad");

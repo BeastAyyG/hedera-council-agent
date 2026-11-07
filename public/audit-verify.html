@@ -29,6 +29,7 @@
     <nav class="app-mobile-nav" aria-label="Primary mobile"><a href="/">Atlas</a><a href="/console.html">Console</a><a href="/mandate.html">Instructions</a><a href="/council.html">Council</a><a href="/member.html">My seat</a><a href="/report.html">Report</a><a href="/verify.html">Verify log</a><a href="/audit.html">Audit log</a><a href="/audit-verify.html" aria-current="page">Audit check</a></nav>
   </header>
   <main class="app-main">
+    <div id="flowProgress"></div>
     <div class="doc-page">
       <aside class="doc-margin">
         <div class="doc-folio">Audit check</div>
@@ -73,11 +74,13 @@
     </div>
   </footer>
 </div>
+<script src="/assets/real-only.js"></script>
 <script type="module">
 import { api } from "/assets/api.js";
-import { $, el, when, short, fillChrome, feedback } from "/assets/council-votes.js";
+import { $, el, when, short, fillChrome, feedback, poll } from "/assets/council-votes.js";
 import { checkEntry, GENESIS } from "/assets/chain-verify.js";
 import { reduced, stagger } from "/assets/motion.js";
+import { mountFlowProgress } from "/assets/flow-progress.js";
 
 const fb = feedback($("status"), null);
 
@@ -154,8 +157,10 @@ async function recheck() {
 
 $("recheck").addEventListener("click", async (ev) => { const b = ev.currentTarget; b.disabled = true; try { await recheck(); } finally { b.disabled = false; } });
 await fillChrome();
+mountFlowProgress();
 try { await recheck(); } catch { fb.set("Could not run the audit check. Reload to retry.", "bad"); }
 document.body.dataset.state = "ready";
+poll(recheck, 5000);
 if (!reduced()) stagger(document.querySelectorAll(".doc-body > header, .doc-section"), 0.05, 0.08);
 </script>
 </body></html>

@@ -1,7 +1,7 @@
 // Shared by /mandate.html, /council.html and /member.html: who this browser can vote as, joining,
 // casting a ballot (World ID or a DEMO identity), and the tally / vote card renderers.
 // The server decides everything; this module only relays ballots and draws what it returns.
-import { api, emit, hbar } from "./api.js";
+import { api, emit, hbar, showSetupBanner } from "./api.js";
 import { runWorldFlow, runWorldBallot, runWorldInvite, runMockedFlow } from "./world-flow.js";
 import { agentMarkup } from "./council-scene.js";
 import { reduced, replay } from "./motion.js";
@@ -43,6 +43,11 @@ export async function loadWorld() {
   return worldCache;
 }
 export const isDemo = (world) => !world.configured && Boolean(world.mockedAllowed);
+// Under REAL_ONLY=1 there are no demo identities: the message says what to set up instead.
+export const noWorldError = (world) =>
+  world.realOnly
+    ? "Real-only mode: World ID is not configured. Set WORLD_RP_ID, WORLD_APP_ID and WORLD_SIGNING_KEY, or unset REAL_ONLY to restore the demo."
+    : "World ID is not configured here and demo identities are disabled.";
 
 // ---------- feedback: status line, QR and API key ----------
 export function feedback(statusEl, qrEl) {
@@ -105,7 +110,7 @@ export async function createInvite({ world, identity, fb }) {
       return { ok: false, status: 0, data: {} };
     } finally { fb.clearQr(); }
   }
-  if (!world.mockedAllowed) return { ok: false, status: 0, data: { error: "World ID is not configured here and demo identities are disabled." } };
+  if (!world.mockedAllowed) return { ok: false, status: 0, data: { error: noWorldError(world) } };
   if (!identity?.nullifier) return { ok: false, status: 0, data: { error: "Pick a demo identity under Act as, or join the council first." } };
   const res = await api.invite({ mocked: true, byNullifier: identity.nullifier });
   if (!res.ok && !fb.needKey(res)) fb.set(res.data?.error || "Could not create an invite.", "bad");
@@ -125,7 +130,7 @@ export async function joinCouncil({ world, fb, invite = null }) {
     const res = world.configured
       ? await runWorldFlow({ join: true, invite, onQr: (_u, svg) => fb.qr(svg), onStatus: (t) => fb.set(t, "wait") })
       : world.mockedAllowed ? await runMockedFlow({ join: true, invite })
-      : { ok: false, status: 0, data: { error: "World ID is not configured here and demo identities are disabled." } };
+      : { ok: false, status: 0, data: { error: noWorldError(world) } };
     if (res.ok) {
       identities.add({ seat: res.data.seat, source: world.configured ? "world" : "mocked", nullifier: world.configured ? null : res.data.nullifier, joinedAt: new Date().toISOString() });
       fb.set(`Joined as ${res.data.seat}${world.configured ? " with World ID" : " (DEMO identity, MOCKED proof)"}.`, "ok");
@@ -143,7 +148,7 @@ export async function castBallot({ item, choice, world, identity, fb }) {
   try {
     let res;
     if (world.configured) res = await runWorldBallot({ kind: item.kind, subject: item.subject, choice, onQr: (_u, svg) => fb.qr(svg), onStatus: (t) => fb.set(t, "wait") });
-    else if (!world.mockedAllowed) res = { ok: false, status: 0, data: { error: "World ID is not configured here and demo identities are disabled." } };
+    else if (!world.mockedAllowed) res = { ok: false, status: 0, data: { error: noWorldError(world) } };
     else if (!identity?.nullifier) res = { ok: false, status: 0, data: { error: "Pick a demo identity under Act as, or join the council first." } };
     else {
       res = await api.vote(item.kind, item.subject, { choice, mocked: true, byNullifier: identity.nullifier });
@@ -251,11 +256,17 @@ export function updateVoteCard(card, item, ctx) {
   const vote = item.vote;
   card.dataset.status = vote.status;
   renderTally(card.querySelector(".cv-tally-host"), vote);
-  card.querySelector(".cv-ballots").replaceChildren(...vote.ballots.map((b) => {
+  const prevBallots = Number(card.dataset.ballots ?? 0);
+  const ballotsList = card.querySelector(".cv-ballots");
+  ballotsList.replaceChildren(...vote.ballots.map((b) => {
     const li = el("li", undefined, "cv-ballot", { "data-choice": b.choice, title: `${b.seat} voted ${b.choice} (${b.source}) at ${when(b.at)}` });
     li.append(el("span", b.choice === "yes" ? "✓" : "✕", "cv-mark", { "aria-hidden": "true" }), `${b.seat.replace("council-seat:", "seat ")} ${b.choice}`);
     return li;
   }));
+  // A ballot that arrived since the last render (cast here or in another
+  // browser) flashes once, so the tally moving is not the only sign.
+  if (vote.ballots.length > prevBallots && ballotsList.lastElementChild && !reduced()) replay(ballotsList.lastElementChild, "m-flash-green", 0);
+  card.dataset.ballots = String(vote.ballots.length);
   const actions = card.querySelector(".cv-actions");
   actions.replaceChildren();
   if (vote.status !== "open") {
@@ -346,7 +357,7 @@ export function mountIdentityBar(host, { world, fb, onChange = () => {}, seatIds
       if (current) row.append(el("a", `My seat: ${current.seat}`, "btn", { href: `/member.html?seat=${encodeURIComponent(current.seat)}` }));
       host.append(note, row);
     } else {
-      host.append(el("p", "World ID is not configured on this server and demo identities are disabled, so this browser cannot vote.", "cv-world-note"));
+      host.append(el("p", world.realOnly ? "Real-only mode: World ID is not configured on this server, so this browser cannot vote. Set WORLD_RP_ID, WORLD_APP_ID and WORLD_SIGNING_KEY, or unset REAL_ONLY to restore the demo." : "World ID is not configured on this server and demo identities are disabled, so this browser cannot vote.", "cv-world-note"));
     }
   };
   render();
@@ -374,6 +385,7 @@ export async function fillChrome() {
     fetch("/policy").then((r) => r.json()).catch(() => ({})),
   ]);
   if (!h) return null;
+  showSetupBanner(h);
   const tag = `${h.mode}, ${h.network}`;
   for (const id of ["chainTag", "railMode"]) { const n = $(id); if (n) n.textContent = tag; }
   const left = $("footLeft"), right = $("footRight");

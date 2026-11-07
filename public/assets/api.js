@@ -26,6 +26,7 @@ async function call(method, path, body) {
 
 export const api = {
   health: () => call("GET", "/health"),
+  setup: () => call("GET", "/setup"),
   proposals: () => call("GET", "/proposals"),
   proposal: (id) => call("GET", `/proposals/${encodeURIComponent(id)}`),
   seats: () => call("GET", "/council/seats"),
@@ -65,4 +66,35 @@ export const hashscan = (network, id) =>
 
 export function qs(name) {
   return new URLSearchParams(location.search).get(name);
+}
+
+// Mode label for the health mode string ("real", "demo", "setup-required").
+export function modeLabel(mode) {
+  return mode === "real" ? "Live" : mode === "demo" ? "Simulated" : mode === "setup-required" ? "Setup required" : mode;
+}
+
+// Show the setup-required banner when the server has no credentials and no
+// DEMO_MODE. Reuses the #toast style from motion.css (fixed, mono, on
+// theme), so no new CSS. Returns true when the banner was shown.
+export function showSetupBanner(health) {
+  if (!health || health.mode !== "setup-required") return false;
+  let toast = document.getElementById("toast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "toast";
+    toast.setAttribute("role", "status");
+    document.body.append(toast);
+  }
+  const missing = (health.missingCredentials ?? []).map((m) => m.name).join(", ");
+  toast.innerHTML = "";
+  const b = document.createElement("b");
+  b.textContent = "SETUP REQUIRED";
+  toast.append(
+    b,
+    document.createTextNode(
+      `${missing ? ` Missing: ${missing}. ` : " "}See docs/REAL-MODE-RUNBOOK.md, or restart with DEMO_MODE=1 for the demo.`,
+    ),
+  );
+  toast.classList.add("on");
+  return true;
 }

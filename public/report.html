@@ -58,6 +58,7 @@
   </header>
 
   <main class="hero">
+    <div id="flowProgress"></div>
     <span class="mark tl" aria-hidden="true"></span>
     <span class="mark tr" aria-hidden="true"></span>
     <span class="mark bl" aria-hidden="true"></span>
@@ -160,6 +161,9 @@
     </div>
   </details>
 
+  <div class="ticker" aria-hidden="true">
+    <div class="ticker-track"><span id="tickA"></span><span id="tickB"></span></div>
+  </div>
   <footer class="footer" id="reportFooter"><div class="col"></div><div class="col"></div><div class="col"></div><div class="col"></div></footer>
 
 </div>
@@ -492,13 +496,19 @@
   document.querySelectorAll('.legend .row').forEach(function(row){
     var part = row.getAttribute('data-part');
     if (!part || !islandSvg) return;
+    var latched = false;
     function spotlight(on){
       islandSvg.querySelectorAll('.part-' + part).forEach(function(g){ g.classList.toggle('spot', on); });
     }
     row.addEventListener('mouseenter', function(){ spotlight(true); });
-    row.addEventListener('mouseleave', function(){ spotlight(false); });
+    row.addEventListener('mouseleave', function(){ spotlight(latched); });
     row.addEventListener('focus', function(){ spotlight(true); });
-    row.addEventListener('blur', function(){ spotlight(false); });
+    row.addEventListener('blur', function(){ spotlight(latched); });
+    row.addEventListener('click', function(){
+      latched = !latched;
+      row.setAttribute('aria-pressed', String(latched));
+      spotlight(latched);
+    });
   });
 
   performance.mark('editorial:script-end');
@@ -506,10 +516,13 @@
 })();
 </script>
 <script type="module" src="/assets/live-original.js"></script>
+<script src="/assets/real-only.js"></script>
 <script type="module">
 import { reduced } from "/assets/motion.js";
+import { mountFlowProgress } from "/assets/flow-progress.js";
 
 const byId = (id) => document.getElementById(id);
+mountFlowProgress();
 const measure = document.createElement("canvas").getContext("2d");
 const TINYBARS_PER_HBAR = 100_000_000n;
 let latestSnapshot = null;

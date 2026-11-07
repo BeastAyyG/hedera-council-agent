@@ -6,9 +6,6 @@ import { pathToFileURL } from "node:url";
 
 const read = (path: string) => readFileSync(join(process.cwd(), "public", path), "utf8");
 const NAV = [["/", "Atlas"], ["/console.html", "Console"], ["/mandate.html", "Instructions"], ["/council.html", "Council"], ["/member.html", "My seat"], ["/report.html", "Report"], ["/verify.html", "Verify log"], ["/audit.html", "Audit log"], ["/audit-verify.html", "Audit check"]];
-// member.html's nav is owned by the per-person work; until that lands it
-// still carries the old 7-link nav.
-const OLD_NAV = NAV.slice(0, 7);
 const PAGES: Array<[string, string | null]> = [
   ["index.html", "/"], ["console.html", "/console.html"], ["report.html", "/report.html"], ["verify.html", null],
   ["mandate.html", "/mandate.html"], ["council.html", "/council.html"], ["member.html", "/member.html"],
@@ -18,16 +15,14 @@ const PAGES: Array<[string, string | null]> = [
 test("every page carries the full nav with the right aria-current", () => {
   for (const [file, current] of PAGES) {
     const html = read(file);
-    for (const [href, label] of file === "member.html" ? OLD_NAV : NAV) {
+    for (const [href, label] of NAV) {
       assert.match(html, new RegExp(`<a href="${href.replace(/[/.]/g, "\\$&")}"[^>]*>${label}</a>`), `${file} links ${label}`);
     }
     const marked = [...html.matchAll(/<a href="([^"]+)"[^>]*aria-current="page"/g)].map((m) => m[1]);
     if (current) assert.ok(marked.length >= 1 && marked.every((href) => href === current), `${file} marks only ${current}: ${marked}`);
   }
   // The app-shell pages have a desktop and a mobile nav, both complete.
-  // member.html is owned by the per-person work (its nav gets the two new
-  // links there); the pages below are this branch's responsibility.
-  for (const file of ["console.html", "mandate.html", "council.html", "audit.html", "audit-verify.html"]) {
+  for (const file of ["console.html", "mandate.html", "council.html", "member.html", "audit.html", "audit-verify.html"]) {
     const html = read(file);
     for (const cls of ["app-nav", "app-mobile-nav"]) {
       const nav = html.match(new RegExp(`<nav class="${cls}"[^>]*>([\\s\\S]*?)</nav>`))?.[1] ?? "";

@@ -33,6 +33,7 @@ import { resolveVote, type CouncilOutcome, type MandateContext } from "./council
 import { castBallot, compileMandate, hbar, openTally, rulesHash, summarize, TINYBARS_PER_HBAR, type VoteTally } from "./mandate.js";
 import { StateStore } from "./store.js";
 import { canonical, sha256 } from "./auditlog.js";
+import { isRealOnly } from "./realOnly.js";
 
 function proposal(id: string, payee: string, amount: number, purpose: string, transferPayee?: string, transferAmount?: number): Proposal {
   return {
@@ -57,7 +58,18 @@ function printScene(n: number, title: string, o: Awaited<ReturnType<typeof proce
 }
 
 async function main(): Promise<void> {
+  // The kill-switch: under REAL_ONLY=1 the rehearsal does not run at all.
+  // Default mode (REAL_ONLY unset) is unchanged.
+  if (isRealOnly(process.env)) {
+    console.log("REAL_ONLY=1: the demo rehearsal is disabled. Unset REAL_ONLY to run it, or use the real server.");
+    process.exitCode = 1;
+    return;
+  }
   const env = { ...process.env };
+  // The rehearsal IS the demo fallback: with no Hedera credentials it runs
+  // as DEMO_MODE=1 explicitly, so the agent it builds never has to guess
+  // which world it is in. With credentials it stays a real rehearsal.
+  if (!env.HEDERA_ACCOUNT_ID?.trim() || !env.HEDERA_PRIVATE_KEY?.trim()) env.DEMO_MODE = "1";
   let server: Server | null = null;
   const real = Boolean(env.HEDERA_ACCOUNT_ID?.trim() && env.HEDERA_PRIVATE_KEY?.trim());
   if (real && !env.CHECK_SERVICE_URL?.trim()) {
@@ -76,7 +88,7 @@ async function main(): Promise<void> {
   // Schedules are unique by content, so real runs get fresh ids.
   const tag = mode === "real" ? `-${Date.now().toString(36)}` : "";
 
-  console.log(`hedera-council-agent demo rehearsal, mode=${mode}`);
+  console.log(`hedera-council-agent demo rehearsal, mode=${mode}${agent.runMode === "demo" ? " (DEMO_MODE=1 fallback, SIMULATED, no real chain ids)" : ""}`);
   console.log(`Check price: ${atomicToUsd(agent.priceAtomic)} via ${agent.payer.via}. Spend cap: ${atomicToUsd(agent.budget.remainingAtomic)}.`);
   if (mode === "real") console.log(`Paid check service: ${agent.checkServiceUrl}, fees to ${agent.payTo}. Treasury: ${agent.hedera.config.treasuryAccountId}.`);
 

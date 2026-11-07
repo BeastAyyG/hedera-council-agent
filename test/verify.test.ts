@@ -17,7 +17,8 @@ const proposal = (id: string, amount: number): Proposal => ({
 });
 
 async function fixture(fn: (f: { bundle: EvidenceBundle; policy: PublishedPolicy; audit: any[] }) => void) {
-  const app = await createApp({ statePath: null, env: {} });
+  // The fixture runs the demo fallback explicitly: no credentials, DEMO_MODE=1.
+  const app = await createApp({ statePath: null, env: { DEMO_MODE: "1" } });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;

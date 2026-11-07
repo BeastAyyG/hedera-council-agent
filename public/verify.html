@@ -198,6 +198,7 @@
   </header>
 
   <main class="vmain">
+    <div id="flowProgress"></div>
     <div class="label v-intro">Public audit</div>
     <h1 class="v-intro" style="--intro-delay:.06s">Verify the log yourself.</h1>
     <p class="lede v-intro" style="--intro-delay:.12s">Read a Hedera topic from a mirror node. Re-check every receipt and its hash links in your browser.</p>
@@ -210,7 +211,7 @@
         <input id="topic" placeholder="0.0.1234" spellcheck="false" required aria-describedby="note" />
       </label>
       <button type="submit" id="go">Verify</button>
-      <button type="button" id="demo" class="secondary" hidden>Load simulated log</button>
+      <button type="button" id="demo" class="secondary" data-demo-only hidden>Load simulated log</button>
     </form>
     <p class="note v-intro" id="note" style="--intro-delay:.24s">Verify fetches the topic afresh. The simulated log, when available, comes from this agent instead.</p>
     <p class="note v-intro" id="flowNote" style="--intro-delay:.3s">One flow, three pages: read every entry on the <a href="/audit.html">Audit log</a> page, see the server&rsquo;s re-check on the <a href="/audit-verify.html">Audit check</a> page, or verify a topic yourself here.</p>
@@ -247,12 +248,50 @@
     <ol class="rows" id="rows" aria-label="Chain entries"></ol>
     <section class="summary" id="summary" aria-label="Verification evidence" hidden></section>
   </main>
-</div>
 
+<script src="/assets/real-only.js"></script>
+  <div class="ticker" aria-hidden="true">
+    <div class="ticker-track"><span id="tickA"></span><span id="tickB"></span></div>
+  </div>
+
+  <footer class="footer">
+    <div class="col">
+      <div class="label">Verify</div>
+      <p>Check the hash chain<br/>yourself. Every entry<br/>links to the one before it.</p>
+    </div>
+    <div class="col">
+      <div class="label">Live</div>
+      <p>Network <b id="footNet">&mdash;</b><br/>Checked <b id="footCount">0</b><br/>Result <b id="footResult">Idle</b></p>
+    </div>
+    <div class="col">
+      <div class="label">Continue</div>
+      <p><a href="/console.html">Open console</a><br/><a href="/council.html">Council</a><br/><a href="/report.html">Report</a></p>
+    </div>
+    <div class="col">
+      <div class="label">Note</div>
+      <p>Council Agent,<br/>Mumbai 2026.</p>
+    </div>
+  </footer>
+</div>
+<script>
+(function () {
+  var net = document.getElementById("footNet");
+  if (!net) return;
+  var count = document.getElementById("footCount");
+  var res = document.getElementById("footResult");
+  setInterval(function () {
+    net.textContent = document.getElementById("tNet").textContent;
+    count.textContent = document.getElementById("tCount").textContent;
+    res.textContent = document.getElementById("tResult").textContent;
+  }, 1000);
+})();
+</script>
+<script src="/assets/ticker.js" defer></script>
 <script type="module">
 import { fetchTopic, isChainedEntry, checkEntry, GENESIS } from "/assets/chain-verify.js";
 import { reduced, sleep } from "/assets/motion.js";
 import { agentMarkup } from "/assets/council-scene.js";
+import { mountFlowProgress } from "/assets/flow-progress.js";
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -271,6 +310,7 @@ const isCurrent = (run) => run === activeRun;
 
 // The shared SVG is decorative; all results also appear as native text.
 $("courier").innerHTML = agentMarkup();
+mountFlowProgress();
 
 function node(tag, className, text) {
   const el = document.createElement(tag);
@@ -558,7 +598,7 @@ $("tNet").textContent = $("network").value;
 if (!$("topic").value) {
   fetch("/health").then((response) => response.json()).then((health) => {
     if (!running && activeRun === 0 && !$("topic").value && /^0\.0\.\d+$/.test(health.hcsTopic || "")) $("topic").value = health.hcsTopic;
-    if (health.mode === "simulated") $("demo").hidden = false;
+    if (health.mode === "simulated" && !health.realOnly) $("demo").hidden = false;
   }).catch(() => {});
 }
 function selectionChanged() {

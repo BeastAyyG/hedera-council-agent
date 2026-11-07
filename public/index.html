@@ -58,6 +58,7 @@
   </header>
 
   <main class="hero">
+    <div id="flowProgress"></div>
     <div class="scene">
       <div class="scene-in">
         <svg id="atlas" viewBox="0 0 760 430" role="img" aria-describedby="journeyCaption"
@@ -665,7 +666,7 @@
     selectedRow = changed.length ? changed[changed.length-1] :
       rows.find(function(row){ return selectedRow && row.id === selectedRow.id; }) || rows[rows.length-1] || null;
     journeyRoute = buildJourney(selectedRow);
-    var source = snapshot.mode === 'real' ? 'live' : snapshot.mode === 'sim' || snapshot.mode === 'simulated' ? 'simulated' : 'source unconfirmed';
+    var source = snapshot.mode === 'real' ? 'live' : snapshot.mode === 'sim' || snapshot.mode === 'simulated' || snapshot.mode === 'demo' ? 'simulated' : snapshot.mode === 'setup-required' ? 'setup required' : 'source unconfirmed';
     journeyLog.textContent = selectedRow ? 'Logged · '+selectedRow.id+' — '+journeyOutcome(selectedRow).label+' · '+source : 'No logged proposals. This route is an example.';
     if (changed.length){
       t = isReduced() || document.hidden || userPaused ? MODEL.duration : 0;
@@ -1156,5 +1157,10 @@
 })();
 </script>
 <script type="module" src="/assets/live-original.js"></script>
+<script src="/assets/real-only.js"></script>
+<script type="module">
+import { mountFlowProgress } from "/assets/flow-progress.js";
+mountFlowProgress();
+</script>
 </body>
 </html>

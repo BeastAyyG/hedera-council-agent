@@ -1,7 +1,7 @@
 // Fills the original Atlas and Report pages with live data from the
 // server. The pages' own markup, CSS and animation are untouched; this
 // module only sets text, so replacing a page needs no backend change.
-import { api, hbar, qs } from "/assets/api.js";
+import { api, hbar, qs, modeLabel, showSetupBanner } from "/assets/api.js";
 import { runFlow, replay, reduced } from "/assets/motion.js";
 
 const $ = (id) => document.getElementById(id);
@@ -80,8 +80,9 @@ const logLine = verify.ok ? `verified, ${verify.checked} entries` : verify.check
 
 if (document.body.querySelector(".hero .scene")) {
   // ---------------- Atlas ----------------
-  text($("sourceChip"), h.mode === "real" ? "Live" : "Simulated");
+  text($("sourceChip"), modeLabel(h.mode));
   if (h.mode === "real") $("sourceChip").classList.add("on");
+  showSetupBanner(h);
 
   // Everything on the page that depends on proposals, so it can be re-applied when a new decision arrives.
   const applyAtlas = (rows, seatCount, h, verify, policy) => {
@@ -123,7 +124,12 @@ if (document.body.querySelector(".hero .scene")) {
   applyAtlas(rows, seats.data.count, h, verify, policy);
 
   // Live: while the page is open, a new decision flashes the dot, shows a toast and replays to the new state.
-  const toast = document.createElement("div"); toast.id = "toast"; toast.setAttribute("role", "status"); document.body.append(toast);
+  // Reuse the toast if the setup banner already made one: two elements with
+  // id "toast" would leave getElementById and the banner fighting each other.
+  // In setup mode no decision can arrive (writes are blocked), so the banner
+  // is never overwritten by a flash.
+  let toast = document.getElementById("toast");
+  if (!toast) { toast = document.createElement("div"); toast.id = "toast"; toast.setAttribute("role", "status"); document.body.append(toast); }
   const known = new Map(rows.map((p) => [p.id, p.decision]));
   let hideT;
   setInterval(async () => {

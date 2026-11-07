@@ -29,6 +29,7 @@
     <nav class="app-mobile-nav" aria-label="Primary mobile"><a href="/">Atlas</a><a href="/console.html">Console</a><a href="/mandate.html" aria-current="page">Instructions</a><a href="/council.html">Council</a><a href="/member.html">My seat</a><a href="/report.html">Report</a><a href="/verify.html">Verify log</a><a href="/audit.html">Audit log</a><a href="/audit-verify.html">Audit check</a></nav>
   </header>
   <main class="app-main">
+    <div id="flowProgress"></div>
     <div class="doc-page">
       <aside class="doc-margin">
         <div class="doc-folio">Instructions</div>
@@ -90,6 +91,9 @@
     </div>
   </main>
 
+  <div class="ticker" aria-hidden="true">
+    <div class="ticker-track"><span id="tickA"></span><span id="tickB"></span></div>
+  </div>
   <footer class="app-footer">
     <div class="app-footer-inner">
       <p id="footLeft">Council Agent, Mumbai 2026</p>
@@ -97,11 +101,14 @@
     </div>
   </footer>
 </div>
+<script src="/assets/ticker.js" defer></script>
 <script src="/vendor/idkit.js"></script>
+<script src="/assets/real-only.js"></script>
 <script type="module">
 import { api, hbar } from "/assets/api.js";
 import { $, el, when, short, identities, loadWorld, feedback, mountIdentityBar, voteCard, updateVoteCard, showStamp, castBallot, sourceBadge, pill, poll, fillChrome } from "/assets/council-votes.js";
-import { countTo, reduced, stagger, whileWorking } from "/assets/motion.js";
+import { countTo, reduced, stagger, whileWorking, replay } from "/assets/motion.js";
+import { mountFlowProgress } from "/assets/flow-progress.js";
 
 const fb = feedback($("status"), $("qr"));
 const voteFb = feedback($("voteStatus"), $("qr"));
@@ -242,7 +249,8 @@ function renderActive(active, spent, monthKey) {
   const cap = active.rules.monthlyCapTinybars;
   if (box.dataset.id !== active.id) {
     box.dataset.id = active.id;
-    const card = el("article", undefined, "cv-active", { "aria-label": `Active standing instruction ${active.id}` });
+    const card = el("article", undefined, "cv-active m-reveal", { "aria-label": `Active standing instruction ${active.id}` });
+    if (!reduced()) replay($("mStamp"), "cv-count-bump");
     card.append(el("span", `Standing instruction ${active.id}`, "doc-folio"), el("blockquote", active.text, "cv-quote"));
     const list = rulesList(active.summary); list.style.marginTop = "12px"; card.append(list);
     const meta = el("div", undefined, "cv-meta");
@@ -325,6 +333,7 @@ world = await loadWorld();
 bar = mountIdentityBar($("identity"), { world, fb: voteFb, onChange: async (next) => { identity = next; $("draftBox").dataset.id = ""; await refresh(); } });
 count();
 fillChrome();
+mountFlowProgress();
 try { await refresh(); } catch { fb.set("Could not load the standing instruction. Reload to retry.", "bad"); }
 document.body.dataset.state = "ready";
 if (!reduced()) stagger(document.querySelectorAll(".doc-body > header, .doc-section"), 0.05, 0.08);

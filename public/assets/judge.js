@@ -90,6 +90,16 @@ export function initJudge(ctx) {
   const expect = (cond, msg) => { if (!cond) throw new Error(msg); };
 
   async function run() {
+    // The kill-switch: judge mode is a demo, so it does not run under REAL_ONLY=1.
+    try {
+      const h = await (await fetch("/health")).json();
+      if (h.realOnly) {
+        say("Judge mode is disabled while REAL_ONLY=1. Unset REAL_ONLY to run the demo.", "warn");
+        return;
+      }
+    } catch {
+      // /health unreadable: run anyway, the API refuses mocked steps on its own.
+    }
     running = true; aborted = false; start.disabled = true; start.textContent = "Running…"; setBody("running");
     $("judgeProcessNote")?.remove();
     items.forEach((li) => { li.dataset.state = "pending"; });

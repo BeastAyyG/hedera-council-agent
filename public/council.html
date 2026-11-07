@@ -29,6 +29,7 @@
     <nav class="app-mobile-nav" aria-label="Primary mobile"><a href="/">Atlas</a><a href="/console.html">Console</a><a href="/mandate.html">Instructions</a><a href="/council.html" aria-current="page">Council</a><a href="/member.html">My seat</a><a href="/report.html">Report</a><a href="/verify.html">Verify log</a><a href="/audit.html">Audit log</a><a href="/audit-verify.html">Audit check</a></nav>
   </header>
   <main class="app-main">
+    <div id="flowProgress"></div>
     <div class="doc-page">
       <aside class="doc-margin">
         <div class="doc-folio">Council</div>
@@ -74,6 +75,9 @@
     </div>
   </main>
 
+  <div class="ticker" aria-hidden="true">
+    <div class="ticker-track"><span id="tickA"></span><span id="tickB"></span></div>
+  </div>
   <footer class="app-footer">
     <div class="app-footer-inner">
       <p id="footLeft">Council Agent, Mumbai 2026</p>
@@ -81,11 +85,14 @@
     </div>
   </footer>
 </div>
+<script src="/assets/ticker.js" defer></script>
 <script src="/vendor/idkit.js"></script>
+<script src="/assets/real-only.js"></script>
 <script type="module">
 import { api, hbar, qs } from "/assets/api.js";
 import { $, el, when, identities, loadWorld, isDemo, feedback, mountIdentityBar, voteCard, updateVoteCard, showStamp, castBallot, seatAvatar, sourceBadge, decisionLabel, pill, poll, fillChrome, joinCouncil, createInvite } from "/assets/council-votes.js";
-import { stagger, reduced } from "/assets/motion.js";
+import { stagger, reduced, replay } from "/assets/motion.js";
+import { mountFlowProgress } from "/assets/flow-progress.js";
 
 const fb = feedback($("status"), $("qr"));
 const cards = new Map();      // subject -> card element in the open grid
@@ -185,23 +192,51 @@ function renderClosed(closed) {
   $("closedList").replaceChildren(table);
 }
 
+const memberRows = new Map(); // seat -> row element, kept across polls so a join slides in instead of rebuilding the list
+let prevSeatCount = -1;
+function memberRowLabel(s, mine) {
+  return `${s.seat}, ${s.source === "world" ? "World ID" : "mocked"} seat${mine ? ", held by this browser" : ""}, ${s.ballots ?? 0} ballot${(s.ballots ?? 0) === 1 ? "" : "s"} cast. View this member's page.`;
+}
+
 function renderMembers(seats) {
-  $("mSeats").textContent = String(seats.length);
+  if (prevSeatCount !== seats.length) {
+    $("mSeats").textContent = String(seats.length);
+    if (prevSeatCount >= 0 && !reduced()) replay($("mSeats"), "cv-count-bump");
+    prevSeatCount = seats.length;
+  }
   $("membersFolio").textContent = `${seats.length} seat${seats.length === 1 ? "" : "s"} · one person, one seat, keyed by the World ID nullifier`;
   const list = $("memberList");
-  const key = JSON.stringify([seats, identities.list().map((x) => x.seat)]);
-  if (list.dataset.key === key) return;
-  list.dataset.key = key;
-  if (!seats.length) { list.replaceChildren(el("p", "No seats yet. Join above: the first members adopt the owner's instruction.", "cv-empty")); return; }
-  list.replaceChildren(...seats.map((s) => {
+  if (!seats.length) {
+    memberRows.clear();
+    list.replaceChildren(el("p", "No seats yet. Join above: the first members adopt the owner's instruction.", "cv-empty"));
+    return;
+  }
+  list.querySelector(".cv-empty")?.remove();
+  const keep = new Set(seats.map((s) => s.seat));
+  for (const [seat, row] of memberRows) if (!keep.has(seat)) { row.remove(); memberRows.delete(seat); }
+  seats.forEach((s) => {
     const mine = Boolean(identities.find(s.seat));
     const ballots = s.ballots ?? 0;
-    const a = el("a", undefined, "cv-member", { href: `/member.html?seat=${encodeURIComponent(s.seat)}`, "data-mine": String(mine), "aria-label": `${s.seat}, ${s.source === "world" ? "World ID" : "mocked"} seat${mine ? ", held by this browser" : ""}, ${ballots} ballot${ballots === 1 ? "" : "s"} cast. View this member's page.` });
-    const info = el("div", undefined, "cv-member-info");
-    info.append(el("b", s.seat), sourceBadge(s.source), el("small", `joined ${when(s.joinedAt)}`), el("small", `${ballots} ballot${ballots === 1 ? "" : "s"} cast`), el("small", "View →", "cv-view"));
-    a.append(seatAvatar(s.seat), info);
-    return a;
-  }));
+    let row = memberRows.get(s.seat);
+    if (!row) {
+      const a = el("a", undefined, "cv-member cv-row-new", { href: `/member.html?seat=${encodeURIComponent(s.seat)}`, "data-mine": String(mine), "aria-label": memberRowLabel(s, mine) });
+      const info = el("div", undefined, "cv-member-info");
+      info.append(el("b", s.seat), sourceBadge(s.source), el("small", `joined ${when(s.joinedAt)}`), el("small", `${ballots} ballot${ballots === 1 ? "" : "s"} cast`, "cv-ballots-count"), el("small", "View →", "cv-view"));
+      a.append(seatAvatar(s.seat), info);
+      row = a;
+      memberRows.set(s.seat, row);
+      list.append(row);
+    } else {
+      // A ballot cast anywhere updates the count in place; the row never rebuilds.
+      const count = row.querySelector(".cv-ballots-count");
+      const text = `${ballots} ballot${ballots === 1 ? "" : "s"} cast`;
+      if (count && count.textContent !== text) { count.textContent = text; if (!reduced()) replay(count, "cv-count-bump"); }
+      if (row.dataset.mine !== String(mine)) row.dataset.mine = String(mine);
+      row.setAttribute("aria-label", memberRowLabel(s, mine));
+    }
+  });
+  // Keep the rows in server order without moving the ones that just slid in.
+  seats.forEach((s, i) => { const row = memberRows.get(s.seat); if (list.children[i] !== row) list.insertBefore(row, list.children[i] ?? null); });
 }
 
 let shownInvite = null; // the invite code, shown once until dismissed
@@ -349,9 +384,10 @@ bar = mountIdentityBar($("identity"), {
   },
 });
 fillChrome();
+mountFlowProgress();
 try { await refresh(); } catch { fb.set("Could not load the council. Reload to retry.", "bad"); }
 document.body.dataset.state = "ready";
 if (!reduced()) stagger(document.querySelectorAll(".doc-body > header, .doc-section"), 0.05, 0.08);
-poll(refresh, 3000);
+poll(refresh, 5000);
 </script>
 </body></html>

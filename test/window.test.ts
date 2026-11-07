@@ -224,7 +224,9 @@ test("execute (real-mode path, fake chain): a schedule deleted in the window abo
 
 type Call = (method: string, path: string, body?: unknown, headers?: Record<string, string>) => Promise<{ status: number; body: any }>;
 async function withServer(opts: AppOptions, fn: (call: Call, base: string) => Promise<void>) {
-  const app = await createApp({ statePath: null, ...opts });
+  // Tests run the demo fallback explicitly: no credentials, DEMO_MODE=1.
+  // The setup-required gate is covered in test/runmode.test.ts.
+  const app = await createApp({ statePath: null, ...opts, env: { DEMO_MODE: "1", ...(opts.env ?? {}) } });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;

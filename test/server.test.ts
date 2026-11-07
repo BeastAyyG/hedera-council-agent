@@ -9,7 +9,9 @@ import type { Proposal } from "../src/proposal.js";
 import { hashSignal } from "@worldcoin/idkit-core";
 
 async function withServer(opts: AppOptions, fn: (call: (method: string, path: string, body?: unknown) => Promise<{ status: number; body: any }>) => Promise<void>) {
-  const app = await createApp({ statePath: null, ...opts });
+  // Tests run the demo fallback explicitly: no credentials, DEMO_MODE=1.
+  // The setup-required gate is covered in test/runmode.test.ts.
+  const app = await createApp({ statePath: null, ...opts, env: { DEMO_MODE: "1", ...(opts.env ?? {}) } });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -231,7 +233,7 @@ test("a proposal naming only a scheduleId is validated and refused without Heder
 });
 
 test("the UI pages and shared assets are served", async () => {
-  const app = await createApp({ statePath: null, env: {} });
+  const app = await createApp({ statePath: null, env: { DEMO_MODE: "1" } });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -274,7 +276,7 @@ test("policy, audit verification and evidence bundles", async () => {
 });
 
 test("/original-console redirects to the original console app", async () => {
-  const app = await createApp({ statePath: null, env: { ORIGINAL_CONSOLE_URL: "http://example.test/council" } });
+  const app = await createApp({ statePath: null, env: { DEMO_MODE: "1", ORIGINAL_CONSOLE_URL: "http://example.test/council" } });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   try {

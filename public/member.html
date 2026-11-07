@@ -21,14 +21,15 @@
     <div class="app-header-inner">
       <a href="/" class="app-wordmark"><span class="app-wordmark-mark" aria-hidden="true"></span><span class="app-wordmark-text">Council <em>Agent</em></span></a>
       <span class="app-header-note">Working papers</span>
-      <nav class="app-nav" aria-label="Primary"><a href="/">Atlas</a><a href="/console.html">Console</a><a href="/mandate.html">Instructions</a><a href="/council.html">Council</a><a href="/member.html" aria-current="page">My seat</a><a href="/report.html">Report</a><a href="/verify.html">Verify log</a></nav>
+      <nav class="app-nav" aria-label="Primary"><a href="/">Atlas</a><a href="/console.html">Console</a><a href="/mandate.html">Instructions</a><a href="/council.html">Council</a><a href="/member.html" aria-current="page">My seat</a><a href="/report.html">Report</a><a href="/verify.html">Verify log</a><a href="/audit.html">Audit log</a><a href="/audit-verify.html">Audit check</a></nav>
       <div class="app-header-actions">
         <span class="app-chain"><span class="status-dot text-safe"></span><span id="chainTag">&mdash;</span></span>
       </div>
     </div>
-    <nav class="app-mobile-nav" aria-label="Primary mobile"><a href="/">Atlas</a><a href="/console.html">Console</a><a href="/mandate.html">Instructions</a><a href="/council.html">Council</a><a href="/member.html" aria-current="page">My seat</a><a href="/report.html">Report</a><a href="/verify.html">Verify log</a></nav>
+    <nav class="app-mobile-nav" aria-label="Primary mobile"><a href="/">Atlas</a><a href="/console.html">Console</a><a href="/mandate.html">Instructions</a><a href="/council.html">Council</a><a href="/member.html" aria-current="page">My seat</a><a href="/report.html">Report</a><a href="/verify.html">Verify log</a><a href="/audit.html">Audit log</a><a href="/audit-verify.html">Audit check</a></nav>
   </header>
   <main class="app-main">
+    <div id="flowProgress"></div>
     <div class="doc-page">
       <aside class="doc-margin">
         <div class="doc-folio">My seat</div>
@@ -69,6 +70,9 @@
     </div>
   </main>
 
+  <div class="ticker" aria-hidden="true">
+    <div class="ticker-track"><span id="tickA"></span><span id="tickB"></span></div>
+  </div>
   <footer class="app-footer">
     <div class="app-footer-inner">
       <p id="footLeft">Council Agent, Mumbai 2026</p>
@@ -76,14 +80,19 @@
     </div>
   </footer>
 </div>
+<script src="/assets/ticker.js" defer></script>
 <script src="/vendor/idkit.js"></script>
+<script src="/assets/real-only.js"></script>
 <script type="module">
 import { api, qs } from "/assets/api.js";
 import { $, el, when, identities, loadWorld, isDemo, feedback, mountIdentityBar, voteCard, updateVoteCard, showStamp, castBallot, seatAvatar, sourceBadge, pill, poll, fillChrome } from "/assets/council-votes.js";
-import { reduced, stagger } from "/assets/motion.js";
+import { reduced, stagger, replay } from "/assets/motion.js";
+import { mountFlowProgress } from "/assets/flow-progress.js";
 
 const fb = feedback($("status"), $("qr"));
 const cards = new Map();
+let prevWaiting = -1;
+let prevBallots = -1;
 let world = { configured: false, mockedAllowed: false };
 let seat = qs("seat") || identities.current()?.seat || null;
 let bar;
@@ -102,7 +111,11 @@ async function onVote(item, choice, card) {
   const res = await castBallot({ item, choice, world, identity: ctx().identity, fb });
   if (res.ok && res.data.vote && res.data.vote.status !== "open") showStamp(card, res.data.vote.status === "passed");
   if (res.ok) updateVoteCard(card, { ...item, vote: res.data.vote, decision: res.data.outcome?.decision ?? item.decision }, ctx());
-  setTimeout(refresh, res.ok && res.data.vote?.status !== "open" && !reduced() ? 2600 : 0);
+  // The ballot leaves Waiting in front of the voter: stamp first, then the
+  // card slides out and the next refresh lands it in Ballots cast.
+  const closed = res.ok && res.data.vote?.status !== "open";
+  if (closed && !reduced()) card.classList.add("cv-leaving");
+  setTimeout(refresh, closed && !reduced() ? 900 : 0);
 }
 
 function renderSwitch() {
@@ -184,7 +197,11 @@ function renderSeat(m) {
 }
 
 function renderWaiting(m) {
-  $("mWaiting").textContent = String(m.awaiting.length);
+  if (prevWaiting !== m.awaiting.length) {
+    $("mWaiting").textContent = String(m.awaiting.length);
+    if (prevWaiting >= 0 && !reduced()) replay($("mWaiting"), "cv-count-bump");
+    prevWaiting = m.awaiting.length;
+  }
   $("waitingFolio").textContent = m.awaiting.length ? `${m.awaiting.length} open vote${m.awaiting.length === 1 ? "" : "s"} this seat can still vote on` : "nothing waiting";
   const box = $("waitingList");
   const keep = new Set(m.awaiting.map((i) => i.subject));
@@ -201,7 +218,12 @@ function renderWaiting(m) {
 }
 
 function renderBallots(m) {
-  $("mBallots").textContent = String(m.ballots.length);
+  if (prevBallots !== m.ballots.length) {
+    $("mBallots").textContent = String(m.ballots.length);
+    if (prevBallots >= 0 && !reduced()) replay($("mBallots"), "cv-count-bump");
+  }
+  const grew = prevBallots >= 0 && m.ballots.length > prevBallots;
+  prevBallots = m.ballots.length;
   $("ballotsFolio").textContent = m.ballots.length ? `${m.ballots.length} cast · one per seat per subject` : "none yet";
   const box = $("ballotsBox");
   const key = JSON.stringify(m.ballots);
@@ -222,6 +244,8 @@ function renderBallots(m) {
   }
   table.append(head, body);
   box.replaceChildren(table);
+  // The ballot that just left Waiting is the newest row: flash it once.
+  if (grew && !reduced()) replay(body.firstElementChild, "m-flash-green", 0);
 }
 
 async function refresh() {
@@ -258,9 +282,10 @@ bar = mountIdentityBar($("identity"), {
   },
 });
 fillChrome();
+mountFlowProgress();
 try { await refresh(); } catch { fb.set("Could not load this seat. Reload to retry.", "bad"); }
 document.body.dataset.state = "ready";
 if (!reduced()) stagger(document.querySelectorAll(".doc-body > header, .doc-section"), 0.05, 0.08);
-poll(refresh, 4000);
+poll(refresh, 5000);
 </script>
 </body></html>

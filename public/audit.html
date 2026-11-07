@@ -29,6 +29,7 @@
     <nav class="app-mobile-nav" aria-label="Primary mobile"><a href="/">Atlas</a><a href="/console.html">Console</a><a href="/mandate.html">Instructions</a><a href="/council.html">Council</a><a href="/member.html">My seat</a><a href="/report.html">Report</a><a href="/verify.html">Verify log</a><a href="/audit.html" aria-current="page">Audit log</a><a href="/audit-verify.html">Audit check</a></nav>
   </header>
   <main class="app-main">
+    <div id="flowProgress"></div>
     <div class="doc-page">
       <aside class="doc-margin">
         <div class="doc-folio">Audit log</div>
@@ -73,10 +74,12 @@
     </div>
   </footer>
 </div>
+<script src="/assets/real-only.js"></script>
 <script type="module">
 import { api } from "/assets/api.js";
 import { $, el, when, short, fillChrome, poll, feedback } from "/assets/council-votes.js";
-import { reduced, stagger } from "/assets/motion.js";
+import { reduced, stagger, replay } from "/assets/motion.js";
+import { mountFlowProgress } from "/assets/flow-progress.js";
 
 const fb = feedback($("status"), null);
 
@@ -114,7 +117,9 @@ function renderEntries(data) {
   const box = $("entriesBox");
   const key = JSON.stringify(entries.map((e) => e.hash));
   if (box.dataset.key === key) return;
+  const prevLen = Number(box.dataset.prevLen ?? 0);
   box.dataset.key = key;
+  box.dataset.prevLen = String(entries.length);
   if (!entries.length) {
     box.replaceChildren(el("p", "No entries yet. Make a proposal on the console and the first entry appears here.", "cv-empty"));
     return;
@@ -133,6 +138,8 @@ function renderEntries(data) {
   }
   table.append(head, body);
   box.replaceChildren(table);
+  // Newest first: a decision that landed since the last poll flashes once.
+  if (entries.length > prevLen && !reduced()) replay(body.firstElementChild, "m-flash-green", 0);
 }
 
 async function refresh() {
@@ -145,9 +152,10 @@ async function refresh() {
 
 $("refresh").addEventListener("click", async (ev) => { const b = ev.currentTarget; b.disabled = true; try { await refresh(); } finally { b.disabled = false; } });
 await fillChrome();
+mountFlowProgress();
 try { await refresh(); } catch { fb.set("Could not load the audit log. Reload to retry.", "bad"); }
 document.body.dataset.state = "ready";
 if (!reduced()) stagger(document.querySelectorAll(".doc-body > header, .doc-section"), 0.05, 0.08);
-poll(refresh, 10000);
+poll(refresh, 5000);
 </script>
 </body></html>

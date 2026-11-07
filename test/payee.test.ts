@@ -360,7 +360,7 @@ test("a worst-case entry stays under the HCS message limit", () => {
 // --- server wiring ---
 
 test("simulated server: demo registry covers the demo payees, is labelled, and refuses others", async () => {
-  const app = await createApp({ statePath: null, env: {} });
+  const app = await createApp({ statePath: null, env: { DEMO_MODE: "1" } });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -396,7 +396,7 @@ test("the policy hash commits to the payee registry and the 0G rule", async () =
       server.close();
     }
   };
-  const base = await hashFor({});
-  assert.notEqual(base, await hashFor({ PAYEE_REGISTRY: "0.0.1001" }));
-  assert.notEqual(base, await hashFor({ ALLOW_NO_0G: "true" }));
+  const base = await hashFor({ DEMO_MODE: "1" });
+  assert.notEqual(base, await hashFor({ DEMO_MODE: "1", PAYEE_REGISTRY: "0.0.1001" }));
+  assert.notEqual(base, await hashFor({ DEMO_MODE: "1", ALLOW_NO_0G: "true" }));
 });

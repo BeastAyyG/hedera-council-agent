@@ -19,3 +19,15 @@
    uppercase, letter-spacing .14em, rotated -6deg, transparent background.
    The compiled .doc-stamp (1px border, sans, -1.5deg) is overridden here. */
 .doc-stamp { border-width: 2px; font-family: var(--font-mono); letter-spacing: .14em; transform: rotate(-6deg); }
+
+/* Shared bottom ticker: the same double-hairline ticker as the editorial
+   pages (paper #f2efe7, hairlines #d8d3c6, 8.5px mono). Filled by
+   /assets/ticker.js; the page still reads fine if the script never runs. */
+.app-shell .ticker { overflow: hidden; border-top: 1px solid var(--hair, #d8d3c6); border-bottom: 3px double var(--hair, #d8d3c6); padding: 7px 0; margin: 6px 0 2px; }
+.app-shell .ticker-track { display: flex; width: max-content; animation: app-ticker-marquee 42s linear infinite; }
+.app-shell .ticker:hover .ticker-track { animation-play-state: paused; }
+.app-shell .ticker-track span { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 8.5px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted, #8b857a); white-space: nowrap; }
+@keyframes app-ticker-marquee { to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) {
+  .app-shell .ticker-track { animation: none; }
+}
