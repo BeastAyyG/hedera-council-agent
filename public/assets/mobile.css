@@ -1,0 +1,91 @@
+/* Mobile usability (max-width 760px). Shared by all nine pages, linked last
+   so it wins over the compiled console CSS and the editorial fork.
+   Theme tokens only: paper #f2efe7, red #e23b28, ink #111110, muted #8b857a,
+   hairlines #d8d3c6. No new colors, no new fonts, no new assets.
+   Every rule here is a touch or readability fix; desktop is untouched.
+   Labels stay at the theme's 8-9px mono (they are labels, not body copy);
+   sentences and form controls are what grow. */
+@media (max-width: 760px) {
+
+  /* ---- 44px tap targets: every button, link-button and control ---- */
+  button, .btn, a.btn { min-height: 44px; }
+  .btn, a.btn { height: auto; padding-top: 11px; padding-bottom: 11px; }
+  .btn-sm { height: auto; padding-top: 11px; padding-bottom: 11px; }
+  .cj-replay { min-height: 44px; }
+
+  /* ---- mobile nav: the 9-link strip stops being a cramped scroll row ---- */
+  .app-mobile-nav { padding: 0 8px; }
+  .app-mobile-nav a { min-height: 44px; padding: 13px 12px; font-size: 12px;
+    display: inline-flex; align-items: center; }
+  .app-wordmark { min-height: 44px; display: inline-flex; align-items: center; }
+
+  /* ---- editorial menu (Atlas / Report / Verify): one 44px row per link ---- */
+  /* inline links in editorial body copy: padded, not 44px tall (a 44px inline
+     link would double-space every paragraph); they clear the 24px WCAG floor */
+  .vmain a { display: inline-block; padding: 8px 2px; }
+  .menu a { min-height: 44px; min-width: 44px; display: flex; align-items: center;
+    font-size: 12px; padding: 4px 0; }
+
+  /* ---- forms: 44px controls, 16px text so iOS does not zoom on focus ---- */
+  input, select, textarea { font-size: 16px; }
+  input[type="text"], input[type="number"], input[type="password"],
+  input:not([type]), select, textarea { min-height: 44px; }
+  .cv-input, .cv-select { height: 44px; min-height: 44px; font-size: 16px; }
+  .cv-textarea { font-size: 16px; }
+  #keyinput { height: 44px; min-height: 44px; font-size: 16px; }
+  .form select, .form input { height: 44px; min-height: 44px; font-size: 16px; }
+  .form button { height: 44px; min-height: 44px; }
+
+  /* ---- council voting and joining ---- */
+  .cv-actions .btn, .cv-identity-row .btn { min-height: 44px; }
+  .cv-chip { min-height: 44px; padding: 12px; }
+  .cv-switch a { min-height: 44px; padding: 12px 10px;
+    display: inline-flex; align-items: center; }
+  .cv-member { padding: 14px 12px; }
+
+  /* ---- Atlas controls: 44px buttons, a thumb a finger can grab ----
+     editorial.css scopes these as body[data-page="atlas"] ... with all:unset,
+     so the generic rules above lose; match that scope here (linked later, so
+     equal specificity wins). */
+  body[data-page="atlas"] .controls button { width: 44px; height: 44px;
+    min-height: 44px; flex: 0 0 44px; }
+  body[data-page="atlas"] .controls #journeyReplay { width: auto;
+    min-height: 44px; padding: 0 12px; }
+  body[data-page="atlas"] #scrub { height: 44px; min-height: 44px; }
+  body[data-page="atlas"] #scrub::-webkit-slider-thumb { width: 22px;
+    height: 22px; margin-top: -10px; }
+  body[data-page="atlas"] #scrub::-moz-range-thumb { width: 22px; height: 22px; }
+  body[data-page="atlas"] .panel-close { width: 44px; height: 44px;
+    min-height: 44px; font-size: 28px; }
+  body[data-page="atlas"] .tech-details summary { min-height: 44px; }
+  .handoff-cta { min-height: 44px; padding: 12px 0; }
+  .legend .row { min-height: 44px; min-width: 44px; }
+  .legend button.row { padding-top: 6px; padding-bottom: 6px; }
+
+  /* ---- receipts and footer links: breathing room, not a redesign ---- */
+  .receipts summary { min-height: 44px; }
+  .col p a, .receipts a, .footer a { padding: 8px 0; }
+  .cv-ledger a, .doc-ledger a { display: inline-block; padding: 8px 2px; }
+
+  /* ---- readable sentences on a phone (labels stay small, per the theme) ---- */
+  .body { font-size: 12.5px; }
+  .journey-caption { font-size: 12px; }
+  .col p { font-size: 10.5px; }
+  .cv-note { font-size: 12px; }
+  .cv-violations li, .cv-rules li { font-size: 13px; }
+  .difference { font-size: 10px; }
+  .statusbar { font-size: 10px; }
+  .cv-status { font-size: 12.5px; }
+  .cv-empty { font-size: 12.5px; }
+  .verdict p, .scene-note { font-size: 12.5px; }
+
+  /* ---- audit tables: never page overflow; scroll inside their own box ---- */
+  #entriesBox { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+
+/* Tightest phones: the Atlas sheet keeps its rail, so give the content a
+   little more room by trimming the sheet's side padding. */
+@media (max-width: 420px) {
+  .sheet { padding-left: 52px; padding-right: 12px; }
+  .rail { left: 10px; }
+}

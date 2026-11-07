@@ -11,6 +11,7 @@
 <meta name="theme-color" content="#f2efe7" />
 <title>The Council — Atlas</title>
 <link rel="stylesheet" href="/assets/editorial.css" />
+<link rel="stylesheet" href="/assets/mobile.css" />
 </head>
 <body data-page="atlas">
 
@@ -1044,6 +1045,22 @@
         e.preventDefault(); e.stopPropagation(); openPanel(c.id);
       }
     });
+    /* mobile: pad the tap area to about 46 CSS px. The Atlas SVG renders at
+       ~252px wide on a phone (viewBox 760), so the pad in user units is
+       computed from the live scale instead of a fixed number. Transparent,
+       under the painted shapes, so the island looks identical and taps
+       anywhere in the padded area open the panel. */
+    try {
+      var scale = (svg.getBoundingClientRect().width || 252) / 760;
+      var need = Math.ceil(46 / scale);
+      var bb = island.getBBox();
+      var hw = Math.max(bb.width, need), hh = Math.max(bb.height, need);
+      var hit = E('rect', { x: (bb.x + bb.width / 2 - hw / 2).toFixed(1),
+        y: (bb.y + bb.height / 2 - hh / 2).toFixed(1),
+        width: hw.toFixed(1), height: hh.toFixed(1),
+        fill: 'rgba(0,0,0,0)', 'pointer-events': 'all' }, island, 'island-hit');
+      island.insertBefore(hit, island.firstChild);
+    } catch (e) { /* getBBox unavailable: the island itself stays tappable */ }
   });
   document.querySelectorAll('.legend .row[data-island]').forEach(function(row){
     row.style.cursor = 'pointer';
