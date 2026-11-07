@@ -21,12 +21,12 @@
     <div class="app-header-inner">
       <a href="/" class="app-wordmark"><span class="app-wordmark-mark" aria-hidden="true"></span><span class="app-wordmark-text">Council <em>Agent</em></span></a>
       <span class="app-header-note">Working papers</span>
-      <nav class="app-nav" aria-label="Primary"><a href="/">Atlas</a><a href="/console.html">Console</a><a href="/mandate.html">Instructions</a><a href="/council.html" aria-current="page">Council</a><a href="/member.html">My seat</a><a href="/report.html">Report</a><a href="/verify.html">Verify log</a></nav>
+      <nav class="app-nav" aria-label="Primary"><a href="/">Atlas</a><a href="/console.html">Console</a><a href="/mandate.html">Instructions</a><a href="/council.html" aria-current="page">Council</a><a href="/member.html">My seat</a><a href="/report.html">Report</a><a href="/verify.html">Verify log</a><a href="/audit.html">Audit log</a><a href="/audit-verify.html">Audit check</a></nav>
       <div class="app-header-actions">
         <span class="app-chain"><span class="status-dot text-safe"></span><span id="chainTag">&mdash;</span></span>
       </div>
     </div>
-    <nav class="app-mobile-nav" aria-label="Primary mobile"><a href="/">Atlas</a><a href="/console.html">Console</a><a href="/mandate.html">Instructions</a><a href="/council.html" aria-current="page">Council</a><a href="/member.html">My seat</a><a href="/report.html">Report</a><a href="/verify.html">Verify log</a></nav>
+    <nav class="app-mobile-nav" aria-label="Primary mobile"><a href="/">Atlas</a><a href="/console.html">Console</a><a href="/mandate.html">Instructions</a><a href="/council.html" aria-current="page">Council</a><a href="/member.html">My seat</a><a href="/report.html">Report</a><a href="/verify.html">Verify log</a><a href="/audit.html">Audit log</a><a href="/audit-verify.html">Audit check</a></nav>
   </header>
   <main class="app-main">
     <div class="doc-page">
@@ -194,8 +194,12 @@ function renderMembers(seats) {
   list.dataset.key = key;
   if (!seats.length) { list.replaceChildren(el("p", "No seats yet. Join above: the first members adopt the owner's instruction.", "cv-empty")); return; }
   list.replaceChildren(...seats.map((s) => {
-    const a = el("a", undefined, "cv-member", { href: `/member.html?seat=${encodeURIComponent(s.seat)}`, "data-mine": String(Boolean(identities.find(s.seat))), "aria-label": `${s.seat}, ${s.source === "world" ? "World ID" : "mocked"} seat${identities.find(s.seat) ? ", held by this browser" : ""}` });
-    a.append(seatAvatar(s.seat), el("b", s.seat), sourceBadge(s.source), el("small", `joined ${when(s.joinedAt)}`));
+    const mine = Boolean(identities.find(s.seat));
+    const ballots = s.ballots ?? 0;
+    const a = el("a", undefined, "cv-member", { href: `/member.html?seat=${encodeURIComponent(s.seat)}`, "data-mine": String(mine), "aria-label": `${s.seat}, ${s.source === "world" ? "World ID" : "mocked"} seat${mine ? ", held by this browser" : ""}, ${ballots} ballot${ballots === 1 ? "" : "s"} cast. View this member's page.` });
+    const info = el("div", undefined, "cv-member-info");
+    info.append(el("b", s.seat), sourceBadge(s.source), el("small", `joined ${when(s.joinedAt)}`), el("small", `${ballots} ballot${ballots === 1 ? "" : "s"} cast`), el("small", "View →", "cv-view"));
+    a.append(seatAvatar(s.seat), info);
     return a;
   }));
 }

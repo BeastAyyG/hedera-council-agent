@@ -258,6 +258,10 @@ test("adoption: draft opens a vote over current seats; 2 of 3 adopt; a new one s
     assert.equal(adopted[0]!.meta.rulesHash, d.body.rulesHash);
     assert.equal(adopted[0]!.meta.textHash, d.body.textHash);
     assert.equal(adopted[0]!.proposalId, "M-1");
+    // The seats list carries how many ballots each seat has cast (the council
+    // page links every row to that member's page and shows the count).
+    const seats = (await call("GET", "/council/seats")).body.seats as Array<{ seat: string; ballots: number }>;
+    assert.deepEqual(Object.fromEntries(seats.map((s) => [s.seat, s.ballots])), { "council-seat:1": 1, "council-seat:2": 1, "council-seat:3": 0 });
     assert.ok((await events(call)).some((e) => e.event === "VOTE" && e.detail === "council-seat:2 voted yes on M-1 (2 of 2 needed)"));
     assert.equal((await call("GET", "/policy")).body.mandate.rulesHash, d.body.rulesHash);
     assert.match((await call("GET", "/health")).body.mandate, /^M-1 /);

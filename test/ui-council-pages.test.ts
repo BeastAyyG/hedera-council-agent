@@ -5,28 +5,45 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const read = (path: string) => readFileSync(join(process.cwd(), "public", path), "utf8");
-const NAV = [["/", "Atlas"], ["/console.html", "Console"], ["/mandate.html", "Instructions"], ["/council.html", "Council"], ["/member.html", "My seat"], ["/report.html", "Report"], ["/verify.html", "Verify log"]];
+const NAV = [["/", "Atlas"], ["/console.html", "Console"], ["/mandate.html", "Instructions"], ["/council.html", "Council"], ["/member.html", "My seat"], ["/report.html", "Report"], ["/verify.html", "Verify log"], ["/audit.html", "Audit log"], ["/audit-verify.html", "Audit check"]];
+// member.html's nav is owned by the per-person work; until that lands it
+// still carries the old 7-link nav.
+const OLD_NAV = NAV.slice(0, 7);
 const PAGES: Array<[string, string | null]> = [
   ["index.html", "/"], ["console.html", "/console.html"], ["report.html", "/report.html"], ["verify.html", null],
   ["mandate.html", "/mandate.html"], ["council.html", "/council.html"], ["member.html", "/member.html"],
+  ["audit.html", "/audit.html"], ["audit-verify.html", "/audit-verify.html"],
 ];
 
 test("every page carries the full nav with the right aria-current", () => {
   for (const [file, current] of PAGES) {
     const html = read(file);
-    for (const [href, label] of NAV) {
+    for (const [href, label] of file === "member.html" ? OLD_NAV : NAV) {
       assert.match(html, new RegExp(`<a href="${href.replace(/[/.]/g, "\\$&")}"[^>]*>${label}</a>`), `${file} links ${label}`);
     }
     const marked = [...html.matchAll(/<a href="([^"]+)"[^>]*aria-current="page"/g)].map((m) => m[1]);
     if (current) assert.ok(marked.length >= 1 && marked.every((href) => href === current), `${file} marks only ${current}: ${marked}`);
   }
   // The app-shell pages have a desktop and a mobile nav, both complete.
-  for (const file of ["console.html", "mandate.html", "council.html", "member.html"]) {
+  // member.html is owned by the per-person work (its nav gets the two new
+  // links there); the pages below are this branch's responsibility.
+  for (const file of ["console.html", "mandate.html", "council.html", "audit.html", "audit-verify.html"]) {
     const html = read(file);
     for (const cls of ["app-nav", "app-mobile-nav"]) {
       const nav = html.match(new RegExp(`<nav class="${cls}"[^>]*>([\\s\\S]*?)</nav>`))?.[1] ?? "";
       assert.equal([...nav.matchAll(/<a /g)].length, NAV.length, `${file} ${cls}`);
     }
+  }
+});
+
+test("no page links to raw JSON: /audit and /audit/verify are pages, not hrefs", () => {
+  // /policy is still a JSON link on the Report receipts, labelled "(JSON)";
+  // there is no Policy page, so that one stays honest rather than hidden.
+  for (const file of ["index.html", "console.html", "report.html", "verify.html", "mandate.html", "council.html", "member.html", "audit.html", "audit-verify.html"]) {
+    const html = read(file);
+    const hrefs = [...html.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
+    assert.ok(!hrefs.includes("/audit"), `${file} still links raw /audit`);
+    assert.ok(!hrefs.includes("/audit/verify"), `${file} still links raw /audit/verify`);
   }
 });
 
@@ -95,4 +112,27 @@ test("council pages share one module and label waiting decisions as the council"
   assert.match(read("report.html"), /PENDING_VOTE[\s\S]*Waiting for the council/);
   assert.match(read("assets/scroll-companion.js"), /PENDING_VOTE"\) flash\("wait", "Council vote"\)/);
   assert.match(read("assets/council-pages.css"), /prefers-reduced-motion:reduce/);
+});
+
+test("per-person member pages: council rows link with ballots count and View; member page handles ?seat=, viewing marker and no-such-seat", () => {
+  const council = read("council.html");
+  // Every member row links to that member's page and shows how many ballots they cast.
+  assert.match(council, /member\.html\?seat=\$\{encodeURIComponent\(s\.seat\)\}/, "council rows link to member.html?seat=");
+  assert.match(council, /ballot\$\{ballots === 1 \? "" : "s"\} cast/, "council rows show the ballots cast count");
+  assert.match(council, /View →/, "council rows carry an obvious View affordance");
+  assert.match(read("assets/council-pages.css"), /\.cv-member-info\{display:grid/, "member info stacks in one wrapper");
+  assert.match(read("assets/council-pages.css"), /\.cv-member \.cv-view\{color:var\(--red\)/, "View affordance uses the red token");
+  const member = read("member.html");
+  // The page reads ?seat= and renders that person, not just this browser.
+  assert.match(member, /qs\("seat"\)/, "member page reads ?seat=");
+  assert.match(member, /id="viewing"/, "member page has a Viewing marker element");
+  assert.match(member, /Viewing \$\{m\.seat\}\./, "viewing marker names the seat being viewed");
+  assert.match(member, /Back to my seat:/, "viewing marker links back to my seat");
+  assert.match(member, /Waiting for \$\{m\.seat\}/, "waiting heading names the viewed seat");
+  assert.match(member, /renderNoSuchSeat\(/, "member page has a dedicated no-such-seat state");
+  assert.match(member, /No seat \$\{requested\}\./, "no-such-seat state names the missing seat");
+  assert.match(member, /See all members on the council page/, "no-such-seat state links back to the council");
+  // A seat this browser does not hold is read-only, and the note points at the
+  // Act as picker on this same page (not at the council page).
+  assert.match(member, /Pick a seat you hold under Act as above/, "read-only note points at this page's Act as picker");
 });

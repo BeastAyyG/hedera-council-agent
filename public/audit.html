@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Council Agent · Audit log</title><link rel="icon" href="data:,">
+<link rel="stylesheet" href="/assets/console-original.css">
+<link rel="stylesheet" href="/assets/app-shell.css">
+<link rel="stylesheet" href="/assets/motion.css">
+<link rel="stylesheet" href="/assets/council-scene.css">
+<link rel="stylesheet" href="/assets/council-pages.css">
+</head><body data-page="audit" class="cv-page" data-state="loading">
+<div class="app-shell">
+  <aside class="app-rail" aria-hidden="true">
+    <a href="/" class="app-rail-mark">COUNCIL</a>
+    <span class="app-rail-rule"></span>
+    <span class="app-rail-meta">Council Agent, Vol. 1</span>
+  </aside>
+  <div class="app-rail-r" aria-hidden="true"><span class="app-dot"></span><span class="app-rail-meta" id="railMode">&mdash;</span></div>
+
+  <header class="app-header">
+    <div class="app-header-inner">
+      <a href="/" class="app-wordmark"><span class="app-wordmark-mark" aria-hidden="true"></span><span class="app-wordmark-text">Council <em>Agent</em></span></a>
+      <span class="app-header-note">Working papers</span>
+      <nav class="app-nav" aria-label="Primary"><a href="/">Atlas</a><a href="/console.html">Console</a><a href="/mandate.html">Instructions</a><a href="/council.html">Council</a><a href="/member.html">My seat</a><a href="/report.html">Report</a><a href="/verify.html">Verify log</a><a href="/audit.html" aria-current="page">Audit log</a><a href="/audit-verify.html">Audit check</a></nav>
+      <div class="app-header-actions">
+        <span class="app-chain"><span class="status-dot text-safe"></span><span id="chainTag">&mdash;</span></span>
+      </div>
+    </div>
+    <nav class="app-mobile-nav" aria-label="Primary mobile"><a href="/">Atlas</a><a href="/console.html">Console</a><a href="/mandate.html">Instructions</a><a href="/council.html">Council</a><a href="/member.html">My seat</a><a href="/report.html">Report</a><a href="/verify.html">Verify log</a><a href="/audit.html" aria-current="page">Audit log</a><a href="/audit-verify.html">Audit check</a></nav>
+  </header>
+  <main class="app-main">
+    <div class="doc-page">
+      <aside class="doc-margin">
+        <div class="doc-folio">Audit log</div>
+        <div class="doc-folio mt-1" id="mEntries">0 entries</div>
+        <div class="cv-margin-notes">
+          <div class="doc-folio">Head<span class="cv-margin-big" id="mHead">0</span></div>
+          <div class="doc-folio">Chain<span class="cv-margin-big" id="mChain">&mdash;</span></div>
+        </div>
+        <div class="mt-6"><span class="doc-stamp" id="mStamp">Log</span></div>
+      </aside>
+
+      <div class="doc-body">
+        <header>
+          <span class="doc-folio" id="folio">Hash-chained · one entry per decision</span>
+          <h1 class="doc-title mt-2 text-body" id="title">The audit log.</h1>
+          <p class="doc-deck mt-4 cv-lede" id="lede">Every decision the agent makes is an entry that commits to the one before it. Change, drop or reorder one entry and the chain breaks. Read it here, or re-check it on the Audit check page.</p>
+          <p id="status" class="cv-status" role="status" aria-live="polite"></p>
+          <div class="cv-actions">
+            <button type="button" class="btn btn-primary" id="refresh">Refresh log</button>
+            <a class="btn" href="/audit-verify.html">Audit check</a>
+            <a class="btn" href="/verify.html">Verify log</a>
+          </div>
+        </header>
+
+        <section class="doc-section" id="summary" aria-labelledby="summaryTitle">
+          <div class="doc-section-head"><h2 class="doc-section-title" id="summaryTitle">Source</h2><span class="doc-folio" id="summaryFolio">&mdash;</span></div>
+          <div id="summaryBox"></div>
+        </section>
+
+        <section class="doc-section" id="entries" aria-labelledby="entriesTitle">
+          <div class="doc-section-head"><h2 class="doc-section-title" id="entriesTitle">Entries</h2><span class="doc-folio" id="entriesFolio">&mdash;</span></div>
+          <div id="entriesBox"></div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <footer class="app-footer">
+    <div class="app-footer-inner">
+      <p id="footLeft">Council Agent, Mumbai 2026</p>
+      <div class="flex flex-wrap items-center gap-4"><p id="footRight">&mdash;</p></div>
+    </div>
+  </footer>
+</div>
+<script type="module">
+import { api } from "/assets/api.js";
+import { $, el, when, short, fillChrome, poll, feedback } from "/assets/council-votes.js";
+import { reduced, stagger } from "/assets/motion.js";
+
+const fb = feedback($("status"), null);
+
+function renderSummary(data) {
+  const r = data.report || {};
+  const head = r.head;
+  $("mEntries").textContent = `${data.entries.length} entries`;
+  $("mHead").textContent = head ? String(head.seq) : "0";
+  $("mChain").textContent = r.ok ? "intact" : "broken";
+  $("mStamp").textContent = r.ok ? "Intact" : "Broken";
+  $("summaryFolio").textContent = data.source === "mirror" ? "read from a mirror node" : data.source === "server" ? "read from this agent (simulated)" : (data.source || "—");
+  const box = $("summaryBox");
+  const dl = el("dl", undefined, "cv-facts");
+  const rows = [
+    ["Source", data.source === "mirror" ? "Hedera mirror node" : data.source === "server" ? "This agent (simulated mode)" : (data.source || "—")],
+    ["Topic", data.topicId || "—"],
+    ["Entries shown", String(data.entries.length)],
+    ["Checked", String(r.checked ?? 0)],
+    ["Ignored", String(r.ignored ?? 0)],
+    ["Head hash", head ? short(head.hash, 16) : "—"],
+    ["Chain", r.ok ? "Intact" : (r.reason || "Broken")],
+  ];
+  for (const [k, v] of rows) { dl.append(el("dt", k), el("dd", v, "cv-mono")); }
+  box.replaceChildren(dl);
+  if (data.hashscan) {
+    const p = el("p", undefined, "cv-empty");
+    p.append("Topic on HashScan: ", el("a", "Open topic", undefined, { href: data.hashscan, target: "_blank", rel: "noreferrer" }), ".");
+    box.append(p);
+  }
+}
+
+function renderEntries(data) {
+  const entries = data.entries || [];
+  $("entriesFolio").textContent = entries.length ? `latest ${entries.length} · newest first` : "empty";
+  const box = $("entriesBox");
+  const key = JSON.stringify(entries.map((e) => e.hash));
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  if (!entries.length) {
+    box.replaceChildren(el("p", "No entries yet. Make a proposal on the console and the first entry appears here.", "cv-empty"));
+    return;
+  }
+  const table = el("table", undefined, "doc-ledger cv-ledger");
+  const hr = el("tr");
+  [["Seq", "cv-num"], ["Event", ""], ["Proposal", ""], ["Detail", ""], ["When", "cv-num"], ["Hash", "cv-num"]].forEach(([t, c]) => hr.append(el("th", t, c, { scope: "col" })));
+  const head = el("thead"); head.append(hr);
+  const body = el("tbody");
+  for (const e of [...entries].reverse()) {
+    const tr = el("tr");
+    const pid = el("td");
+    pid.append(el("a", e.proposalId, "cv-mono", { href: `/console.html?proposal=${encodeURIComponent(e.proposalId)}` }));
+    tr.append(el("td", String(e.seq), "cv-num"), el("td", e.event), pid, el("td", e.detail), el("td", when(e.at), "cv-num"), el("td", short(e.hash, 12), "cv-num"));
+    body.append(tr);
+  }
+  table.append(head, body);
+  box.replaceChildren(table);
+}
+
+async function refresh() {
+  const r = await api.audit();
+  if (!r.ok) { fb.set(r.data?.error || "Could not load the audit log. Reload to retry.", "bad"); return; }
+  fb.set("", "neutral");
+  renderSummary(r.data);
+  renderEntries(r.data);
+}
+
+$("refresh").addEventListener("click", async (ev) => { const b = ev.currentTarget; b.disabled = true; try { await refresh(); } finally { b.disabled = false; } });
+await fillChrome();
+try { await refresh(); } catch { fb.set("Could not load the audit log. Reload to retry.", "bad"); }
+document.body.dataset.state = "ready";
+if (!reduced()) stagger(document.querySelectorAll(".doc-body > header, .doc-section"), 0.05, 0.08);
+poll(refresh, 10000);
+</script>
+</body></html>

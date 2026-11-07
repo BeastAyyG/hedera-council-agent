@@ -46,6 +46,10 @@ export const api = {
   qrUrl: (data) => `/world/qr.svg?data=${encodeURIComponent(data)}`,
   // Standing instructions and council votes (docs/mandate-spec.md).
   mandate: () => call("GET", "/mandate"),
+  // Audit log and its check, rendered as pages (audit.html, audit-verify.html).
+  audit: () => call("GET", "/audit"),
+  auditVerify: () => call("GET", "/audit/verify"),
+  policy: () => call("GET", "/policy"),
   draftMandate: (text) => call("POST", "/mandate/draft", { text }),
   votes: () => call("GET", "/council/votes"),
   member: (seat) => call("GET", `/council/members/${encodeURIComponent(seat)}`),

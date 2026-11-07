@@ -181,7 +181,7 @@
       <a href="/council.html">Council</a>
       <a href="/member.html">My seat</a>
       <a href="/report.html">Report</a>
-      <a href="/verify.html" aria-current="page">Verify log</a>
+      <a href="/verify.html" aria-current="page">Verify log</a><a href="/audit.html">Audit log</a><a href="/audit-verify.html">Audit check</a>
     </div>
     <div>
       <div class="label">Network</div>
@@ -213,6 +213,12 @@
       <button type="button" id="demo" class="secondary" hidden>Load simulated log</button>
     </form>
     <p class="note v-intro" id="note" style="--intro-delay:.24s">Verify fetches the topic afresh. The simulated log, when available, comes from this agent instead.</p>
+    <p class="note v-intro" id="flowNote" style="--intro-delay:.3s">One flow, three pages: read every entry on the <a href="/audit.html">Audit log</a> page, see the server&rsquo;s re-check on the <a href="/audit-verify.html">Audit check</a> page, or verify a topic yourself here.</p>
+    <section class="latest v-intro" id="latest" aria-labelledby="latestTitle" style="--intro-delay:.36s">
+      <h2 id="latestTitle">Latest entries</h2>
+      <ol class="rows" id="latestRows" aria-label="Latest audit entries"></ol>
+      <p class="note"><a href="/audit.html">See all entries on the Audit log page</a>.</p>
+    </section>
 
     <section class="receipt-scene" id="receiptScene" data-state="idle" data-motion="false" aria-labelledby="sceneTitle">
       <div class="scene-heading">
@@ -610,6 +616,44 @@ $("demo").addEventListener("click", async () => {
 });
 
 if (params.get("topic") && params.get("auto") !== "0") $("form").requestSubmit();
+
+// Latest entries from this agent's log, so the three audit pages read as one
+// flow: Audit log -> Audit check -> this page.
+async function loadLatest() {
+  const list = $("latestRows");
+  try {
+    const response = await fetch("/audit");
+    if (!response.ok) throw new Error(`The agent answered ${response.status} for /audit.`);
+    const data = await response.json();
+    const entries = Array.isArray(data.entries) ? [...data.entries].reverse().slice(0, 5) : [];
+    list.replaceChildren();
+    if (!entries.length) {
+      const li = node("li", "row-empty", "No entries yet. Make a proposal on the console and the first entry appears here.");
+      list.append(li);
+      return;
+    }
+    for (const e of entries) {
+      const li = node("li", "row");
+      const marker = node("span", "entry-marker");
+      marker.append(node("span", "pip"), node("span", undefined, `#${e.seq}`));
+      const main = node("div", "entry-main");
+      main.append(node("span", "entry-event", e.event));
+      const pid = node("span", "entry-pid");
+      const a = node("a", undefined, e.proposalId);
+      a.href = `/console.html?proposal=${encodeURIComponent(e.proposalId)}`;
+      pid.append(a);
+      main.append(pid);
+      const detail = node("div", "hash-detail", e.detail);
+      const when = e.at ? new Date(e.at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—";
+      li.append(marker, main, detail, node("span", "entry-state", when));
+      list.append(li);
+    }
+  } catch {
+    list.replaceChildren();
+    list.append(node("li", "row-empty", "Latest entries are unavailable right now. The full log is on the Audit log page."));
+  }
+}
+loadLatest();
 </script>
 </body>
 </html>

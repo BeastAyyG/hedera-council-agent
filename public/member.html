@@ -45,6 +45,7 @@
           <span class="doc-folio" id="folio">Council member · one person, one seat</span>
           <h1 class="doc-title mt-2 text-body" id="title">My seat on the council.</h1>
           <p class="doc-deck mt-4 cv-lede" id="lede">A member's page: the seat, when it was taken, every ballot it cast, and the votes still waiting for it. A council's votes are public.</p>
+          <p id="viewing" class="cv-viewing" hidden></p>
           <div id="identity"></div>
           <div id="qr" class="cv-qr" hidden></div>
           <p id="status" class="cv-status" role="status" aria-live="polite"></p>
@@ -88,10 +89,12 @@ let seat = qs("seat") || identities.current()?.seat || null;
 let bar;
 
 // Who may press the buttons here: this browser's DEMO identity for this seat, or anyone with World ID (the proof picks the seat).
+// A demo browser holds one identity per seat it joined, and can play several voters;
+// the Act as picker above switches which held seat this page votes as.
 function ctx() {
   const mine = seat ? identities.find(seat) : null;
   const readOnly = world.configured || mine ? null
-    : isDemo(world) ? `This browser does not hold ${seat}. Open a seat you hold, or vote as it on the council page.` : "World ID is not configured on this server.";
+    : isDemo(world) ? `This browser does not hold ${seat}. Pick a seat you hold under Act as above, or join as a demo member.` : "World ID is not configured on this server.";
   return { world, identity: mine ?? (world.configured ? { seat } : null), readOnly, onVote };
 }
 
@@ -111,6 +114,7 @@ function renderSwitch() {
 }
 
 function renderNoSeat() {
+  $("viewing").hidden = true;
   $("title").textContent = "You do not hold a seat yet.";
   $("lede").textContent = world.configured
     ? "Join with World ID: one person, one seat, keyed by your World ID nullifier. Then this page shows your ballots and the votes waiting for you."
@@ -124,6 +128,23 @@ function renderNoSeat() {
   $("ballotsBox").replaceChildren();
 }
 
+// A ?seat= was opened for a seat that does not exist on this server (removed,
+// or a wrong link): say so plainly instead of the "you hold no seat" page.
+function renderNoSuchSeat(requested) {
+  $("viewing").hidden = true;
+  document.title = `Council Agent · No seat ${requested}`;
+  $("mSeat").textContent = requested;
+  $("mStamp").textContent = "No seat";
+  $("title").textContent = `No seat ${requested}.`;
+  $("lede").textContent = "There is no council seat with that id on this server. It may have been removed by a council vote, or the link is wrong.";
+  $("seatFolio").textContent = "no such seat";
+  $("seatBox").replaceChildren(el("p", undefined, "cv-empty"));
+  $("seatBox").firstChild.append("No record to show. ", el("a", "See all members on the council page", undefined, { href: "/council.html#members" }), ".");
+  $("waitingFolio").textContent = "—"; $("ballotsFolio").textContent = "—";
+  $("waitingList").replaceChildren(el("p", "No votes are waiting for a seat that does not exist.", "cv-empty"));
+  $("ballotsBox").replaceChildren(el("p", "No ballots: there is no seat to have cast them.", "cv-empty"));
+}
+
 function renderSeat(m) {
   const mine = identities.find(m.seat);
   document.title = `Council Agent · ${m.seat}`;
@@ -133,6 +154,18 @@ function renderSeat(m) {
   $("title").textContent = mine ? `My seat: ${m.seat}.` : `Seat ${m.seat}.`;
   $("lede").textContent = mine ? (mine.source === "world" ? "This browser joined as this seat with World ID. Every ballot is a fresh proof." : "This browser holds this seat as a DEMO identity (MOCKED proof). Ballots below are cast as this seat.")
     : "A council's votes are public: this is the seat's record. Only its holder can vote as it.";
+  // "Waiting for you" would be wrong on another member's page: name the seat.
+  $("waitingTitle").textContent = mine ? "Waiting for you" : `Waiting for ${m.seat}`;
+  // Marker + way back: viewing another seat is a public record, not your page.
+  const viewing = $("viewing");
+  const current = identities.current();
+  if (mine) { viewing.hidden = true; viewing.replaceChildren(); }
+  else {
+    viewing.hidden = false;
+    viewing.replaceChildren(`Viewing ${m.seat}. `);
+    if (current) viewing.append(el("a", `Back to my seat: ${current.seat}`, undefined, { href: `/member.html?seat=${encodeURIComponent(current.seat)}` }), ".");
+    else viewing.append(el("a", "See all members on the council page", undefined, { href: "/council.html#members" }), ".");
+  }
   $("seatFolio").textContent = `joined ${when(m.joinedAt)}`;
   const key = JSON.stringify([m.seat, m.source, m.joinedAt, Boolean(mine), m.ballots.length, identities.list().length]);
   if ($("seatBox").dataset.key !== key) {
@@ -197,8 +230,12 @@ async function refresh() {
   if (!seat) { renderNoSeat(); return; }
   const r = await api.member(seat);
   if (!r.ok) {
-    const known = s.ok && s.data.seats.some((x) => x.seat === seat);
-    fb.set(r.status === 404 ? (known ? "This server has no member route yet (GET /council/members/:seat)." : `No seat ${seat} on this server.`) : r.data?.error || "Could not load this seat.", "bad");
+    if (r.status === 404) {
+      fb.set(`No seat ${seat} on this server.`, "bad");
+      renderNoSuchSeat(seat);
+      return;
+    }
+    fb.set(r.data?.error || "Could not load this seat.", "bad");
     renderNoSeat();
     return;
   }

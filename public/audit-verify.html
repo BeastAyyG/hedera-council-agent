@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Council Agent · Audit check</title><link rel="icon" href="data:,">
+<link rel="stylesheet" href="/assets/console-original.css">
+<link rel="stylesheet" href="/assets/app-shell.css">
+<link rel="stylesheet" href="/assets/motion.css">
+<link rel="stylesheet" href="/assets/council-scene.css">
+<link rel="stylesheet" href="/assets/council-pages.css">
+</head><body data-page="audit-verify" class="cv-page" data-state="loading">
+<div class="app-shell">
+  <aside class="app-rail" aria-hidden="true">
+    <a href="/" class="app-rail-mark">COUNCIL</a>
+    <span class="app-rail-rule"></span>
+    <span class="app-rail-meta">Council Agent, Vol. 1</span>
+  </aside>
+  <div class="app-rail-r" aria-hidden="true"><span class="app-dot"></span><span class="app-rail-meta" id="railMode">&mdash;</span></div>
+
+  <header class="app-header">
+    <div class="app-header-inner">
+      <a href="/" class="app-wordmark"><span class="app-wordmark-mark" aria-hidden="true"></span><span class="app-wordmark-text">Council <em>Agent</em></span></a>
+      <span class="app-header-note">Working papers</span>
+      <nav class="app-nav" aria-label="Primary"><a href="/">Atlas</a><a href="/console.html">Console</a><a href="/mandate.html">Instructions</a><a href="/council.html">Council</a><a href="/member.html">My seat</a><a href="/report.html">Report</a><a href="/verify.html">Verify log</a><a href="/audit.html">Audit log</a><a href="/audit-verify.html" aria-current="page">Audit check</a></nav>
+      <div class="app-header-actions">
+        <span class="app-chain"><span class="status-dot text-safe"></span><span id="chainTag">&mdash;</span></span>
+      </div>
+    </div>
+    <nav class="app-mobile-nav" aria-label="Primary mobile"><a href="/">Atlas</a><a href="/console.html">Console</a><a href="/mandate.html">Instructions</a><a href="/council.html">Council</a><a href="/member.html">My seat</a><a href="/report.html">Report</a><a href="/verify.html">Verify log</a><a href="/audit.html">Audit log</a><a href="/audit-verify.html" aria-current="page">Audit check</a></nav>
+  </header>
+  <main class="app-main">
+    <div class="doc-page">
+      <aside class="doc-margin">
+        <div class="doc-folio">Audit check</div>
+        <div class="doc-folio mt-1" id="mChecked">0 checked</div>
+        <div class="cv-margin-notes">
+          <div class="doc-folio">Head<span class="cv-margin-big" id="mHead">0</span></div>
+          <div class="doc-folio">Verdict<span class="cv-margin-big" id="mVerdict">&mdash;</span></div>
+        </div>
+        <div class="mt-6"><span class="doc-stamp" id="mStamp">Check</span></div>
+      </aside>
+
+      <div class="doc-body">
+        <header>
+          <span class="doc-folio" id="folio">Re-read from the source · hash by hash</span>
+          <h1 class="doc-title mt-2 text-body" id="title">The audit check.</h1>
+          <p class="doc-deck mt-4 cv-lede" id="lede">The server re-reads the audit topic and re-checks the hash chain from scratch. This page also re-checks every entry in your own browser, so you do not have to take the server's word for it. A changed, missing or reordered entry fails its row.</p>
+          <p id="status" class="cv-status" role="status" aria-live="polite"></p>
+          <div class="cv-actions">
+            <button type="button" class="btn btn-primary" id="recheck">Re-check now</button>
+            <a class="btn" href="/audit.html">Audit log</a>
+            <a class="btn" href="/verify.html">Verify log</a>
+          </div>
+        </header>
+
+        <section class="doc-section" id="verdict" aria-labelledby="verdictTitle">
+          <div class="doc-section-head"><h2 class="doc-section-title" id="verdictTitle">Server verdict</h2><span class="doc-folio" id="verdictFolio">&mdash;</span></div>
+          <div id="verdictBox"></div>
+        </section>
+
+        <section class="doc-section" id="entries" aria-labelledby="entriesTitle">
+          <div class="doc-section-head"><h2 class="doc-section-title" id="entriesTitle">Entry by entry, checked in this browser</h2><span class="doc-folio" id="entriesFolio">&mdash;</span></div>
+          <div id="entriesBox"></div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <footer class="app-footer">
+    <div class="app-footer-inner">
+      <p id="footLeft">Council Agent, Mumbai 2026</p>
+      <div class="flex flex-wrap items-center gap-4"><p id="footRight">&mdash;</p></div>
+    </div>
+  </footer>
+</div>
+<script type="module">
+import { api } from "/assets/api.js";
+import { $, el, when, short, fillChrome, feedback } from "/assets/council-votes.js";
+import { checkEntry, GENESIS } from "/assets/chain-verify.js";
+import { reduced, stagger } from "/assets/motion.js";
+
+const fb = feedback($("status"), null);
+
+function renderVerdict(data) {
+  const ok = data.ok === true;
+  $("mChecked").textContent = `${data.checked ?? 0} checked`;
+  $("mHead").textContent = data.head ? String(data.head.seq) : "0";
+  $("mVerdict").textContent = ok ? "intact" : "broken";
+  $("mStamp").textContent = ok ? "Intact" : "Broken";
+  $("verdictFolio").textContent = data.source === "mirror" ? "read from a mirror node" : data.source === "server" ? "read from this agent (simulated)" : (data.source || "—");
+  const box = $("verdictBox");
+  const dl = el("dl", undefined, "cv-facts");
+  const rows = [
+    ["Verdict", ok ? "Chain intact" : "Chain broken"],
+    ["Checked", String(data.checked ?? 0)],
+    ["Ignored", String(data.ignored ?? 0)],
+    ["Head", data.head ? `#${data.head.seq} · ${short(data.head.hash, 16)}` : "—"],
+    ["Broken at", data.brokenAt === null || data.brokenAt === undefined ? "—" : String(data.brokenAt)],
+    ["Reason", data.reason || "—"],
+    ["Policy hash", data.policyHash ? short(data.policyHash, 16) : "—"],
+    ["Source", data.source === "mirror" ? "Hedera mirror node" : data.source === "server" ? "This agent (simulated mode)" : (data.source || "—")],
+    ["Topic", data.topicId || "—"],
+  ];
+  if (data.truncated) rows.push(["Note", "The topic read stopped before the end; later entries were not checked."]);
+  for (const [k, v] of rows) { dl.append(el("dt", k), el("dd", v, "cv-mono")); }
+  box.replaceChildren(dl);
+  if (data.hashscan) {
+    const p = el("p", undefined, "cv-empty");
+    p.append("Topic on HashScan: ", el("a", "Open topic", undefined, { href: data.hashscan, target: "_blank", rel: "noreferrer" }), ".");
+    box.append(p);
+  }
+}
+
+// Re-check every entry in this browser. /audit returns only the latest 100
+// entries, so when the window starts after entry 1 the first entry's own
+// prev hash is the head it links to (same partial-window rule as the server).
+async function renderEntries(entries) {
+  const box = $("entriesBox");
+  if (!entries.length) {
+    $("entriesFolio").textContent = "empty";
+    box.replaceChildren(el("p", "No entries yet. Make a proposal on the console and the first entry appears here.", "cv-empty"));
+    return;
+  }
+  $("entriesFolio").textContent = entries[0].seq > 1 ? `last ${entries.length} entries (from #${entries[0].seq})` : `${entries.length} entries`;
+  const sorted = [...entries].sort((a, b) => a.seq - b.seq);
+  let head = sorted[0].seq > 1 ? { seq: sorted[0].seq - 1, hash: sorted[0].prev } : { seq: 0, hash: GENESIS };
+  const table = el("table", undefined, "doc-ledger cv-ledger");
+  const hr = el("tr");
+  [["Seq", "cv-num"], ["Event", ""], ["Result", ""], ["Detail", ""], ["When", "cv-num"]].forEach(([t, c]) => hr.append(el("th", t, c, { scope: "col" })));
+  const thead = el("thead"); thead.append(hr);
+  const body = el("tbody");
+  for (const e of sorted) {
+    const reason = await checkEntry(e, head);
+    const tr = el("tr");
+    const res = el("td");
+    res.append(el("span", reason ? "FAIL" : "PASS", "cv-pill", { "data-tone": reason ? "danger" : "safe" }));
+    tr.append(el("td", String(e.seq), "cv-num"), el("td", e.event), res, el("td", reason || "Hash and link hold."), el("td", when(e.at), "cv-num"));
+    body.append(tr);
+    if (!reason) head = { seq: e.seq, hash: e.hash };
+    else break;
+  }
+  table.append(thead, body);
+  box.replaceChildren(table);
+}
+
+async function recheck() {
+  const [v, a] = await Promise.all([api.auditVerify(), api.audit()]);
+  if (!v.ok) { fb.set(v.data?.error || "Could not run the audit check. Reload to retry.", "bad"); return; }
+  if (!a.ok) { fb.set(a.data?.error || "Could not load the audit log for the per-entry check.", "bad"); renderVerdict(v.data); return; }
+  fb.set("", "neutral");
+  renderVerdict(v.data);
+  await renderEntries(a.data.entries || []);
+}
+
+$("recheck").addEventListener("click", async (ev) => { const b = ev.currentTarget; b.disabled = true; try { await recheck(); } finally { b.disabled = false; } });
+await fillChrome();
+try { await recheck(); } catch { fb.set("Could not run the audit check. Reload to retry.", "bad"); }
+document.body.dataset.state = "ready";
+if (!reduced()) stagger(document.querySelectorAll(".doc-body > header, .doc-section"), 0.05, 0.08);
+</script>
+</body></html>

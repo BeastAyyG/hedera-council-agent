@@ -33,7 +33,10 @@
     "start": "node --import ./dist/src/env.js dist/src/server.js",
     "test": "npm run build && node --test dist/test/*.test.js",
     "verify": "npm run build --silent && node --import ./dist/src/env.js dist/src/verify.js",
-    "propose": "npm run build --silent && node --import ./dist/src/env.js dist/src/propose.js"
+    "propose": "npm run build --silent && node --import ./dist/src/env.js dist/src/propose.js",
+    "css:console": "tailwindcss -i design/console-entry.css -o public/assets/console-original.css --minify",
+    "console:install": "npm --prefix original-console install --ignore-scripts && npm --prefix original-console/console install --ignore-scripts",
+    "console": "npm --prefix original-console/console run build && npm --prefix original-console/console run start -- -p 3380"
   },
   "type": "module",
   "version": "0.1.0"
