@@ -389,6 +389,7 @@ body[data-page="atlas"] .chip {display:inline-flex;align-items:center;gap:6px;pa
     text-transform:uppercase;color:var(--muted);}
 body[data-page="atlas"] .chip.on {color:var(--red);border-color:#e9a79c;}
 body[data-page="atlas"] .hero { position: relative; flex: 1; display: grid; grid-template-columns: minmax(0,1.6fr) minmax(250px,.78fr); align-items: center; gap: 26px; padding: 20px 0 10px; }
+body[data-page="atlas"] .hero > #flowProgress { grid-column: 1 / -1; }
 body[data-page="atlas"] .scene {position:relative;transform:translate(calc(var(--mx)*8px),calc(var(--my)*5px));}
 body[data-page="atlas"] .scene-in {position:relative;animation:fade .55s ease .40s both;width:100%;}
 body[data-page="atlas"] #atlas {width:100%;height:auto;display:block;transition:filter .35s linear;}
