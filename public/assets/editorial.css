@@ -655,6 +655,7 @@ body[data-page="report"] .rail-rule { animation: grow .45s cubic-bezier(.77,0,.1
 body[data-page="report"] .topbar { animation: fade .42s ease .12s both; }
 body[data-page="report"] .wordmark, body[data-page="report"] .rail-meta {animation:fade .35s ease .06s both;}
 body[data-page="report"] .hero { grid-template-columns: minmax(0,1.05fr) minmax(250px,1.1fr) minmax(280px,.95fr); padding: 22px 0 18px; }
+body[data-page="report"] .hero > #flowProgress { grid-column: 1 / -1; }
 body[data-page="report"] .amount {position:relative;width:100%;min-width:0;max-width:100%;}
 body[data-page="report"] .amount.left {text-align:center;animation:amountLeftIn .46s cubic-bezier(.2,.75,.2,1) .26s both;}
 body[data-page="report"] .amount.right {text-align:left;animation:amountRightIn .46s cubic-bezier(.2,.75,.2,1) .58s both;}
